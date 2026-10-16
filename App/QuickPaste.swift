@@ -35,7 +35,7 @@ final class QuickPastePanel {
         model.reset(source: source)
         model.releaseToPaste = viaHotKey && Preferences.shared.releaseToPaste && Self.modifiersHeld
         if panel == nil {
-            let panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 760, height: 460),
+            let panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 880, height: 480),
                                  styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView, .resizable],
                                  backing: .buffered, defer: false)
             panel.titleVisibility = .hidden
@@ -48,8 +48,9 @@ final class QuickPastePanel {
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-            panel.contentMinSize = NSSize(width: 460, height: 300)
-            panel.setFrameAutosaveName("PasteLensQuickPaste")
+            panel.contentMinSize = NSSize(width: 640, height: 320)
+            // A new name: the column on the left needs more width than the size saved before.
+            panel.setFrameAutosaveName("PasteLensQuickPaste2")
             let hosting = NSHostingView(rootView: QuickPasteView(model: model))
             panel.contentView = hosting
             panel.onResignKey = { [weak self] in self?.close() }
@@ -90,6 +91,9 @@ final class QuickPastePanel {
 
     private func installMonitors() {
         removeMonitors()
+        // Something on some Macs takes Shift-Tab before any window sees it; while Quick Paste
+        // is open it's held as a hot key instead, which macOS always delivers.
+        PanelKeys.begin()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.isVisible, event.window === self.panel else { return event }
             return self.model.handle(event) ? nil : event
@@ -105,6 +109,7 @@ final class QuickPastePanel {
     }
 
     private func removeMonitors() {
+        PanelKeys.end()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         keyMonitor = nil
@@ -157,19 +162,26 @@ final class QuickPasteModel {
     var filterError: String?
     @ObservationIgnored private var previewTask: Task<Void, Never>?
 
-    var sources: [(Source, String, String)] {
-        let lib = ClipStore.shared.library
+    /// The left column: History and your pastebins. Tab moves through these.
+    var binSources: [(Source, String, String)] {
         var out: [(Source, String, String)] = [(.history, "History", "clock")]
-        if lib.clippings.contains(where: \.pinned) { out.append((.pinned, "Pinned", "pin")) }
-        for bin in lib.pastebins.sorted(by: { $0.order < $1.order }) where bin.showInQuickPaste {
-            out.append((.pastebin(bin.id), bin.name, bin.symbol))
-        }
-        for bin in lib.smartPastebins.sorted(by: { $0.order < $1.order }) where bin.showInQuickPaste {
+        for bin in pastebins where bin.showInQuickPaste { out.append((.pastebin(bin.id), bin.name, bin.symbol)) }
+        return out
+    }
+
+    /// The row across the top: Pinned, smart pastebins and snippets. Shift-Tab moves through these.
+    var viewSources: [(Source, String, String)] {
+        let store = ClipStore.shared
+        var out: [(Source, String, String)] = []
+        if (store.count(.pinned) ?? 0) > 0 { out.append((.pinned, "Pinned", "pin")) }
+        for bin in store.library.smartPastebins.sorted(by: { $0.order < $1.order }) where bin.showInQuickPaste {
             out.append((.smart(bin.id), bin.name, bin.symbol))
         }
         out.append((.snippets, "Snippets", "text.badge.plus"))
         return out
     }
+
+    var sources: [(Source, String, String)] { binSources + viewSources }
 
     func reset(source: Source) {
         filterMode = nil
@@ -272,9 +284,16 @@ final class QuickPasteModel {
         selection = (selection + delta + count) % count
     }
 
-    func cycleSource(_ delta: Int) {
-        let all = sources.map(\.0)
-        guard let i = all.firstIndex(of: source) else { source = .history; return }
+    func shiftTab() {
+        guard filterMode == nil else { return }
+        cycle(viewSources, 1)
+    }
+
+    /// Steps through one group of sources. From the other group, it starts at that group's first.
+    func cycle(_ group: [(Source, String, String)], _ delta: Int) {
+        let all = group.map(\.0)
+        guard !all.isEmpty else { return }
+        guard let i = all.firstIndex(of: source) else { source = delta > 0 ? all[0] : all[all.count - 1]; return }
         source = all[(i + delta + all.count) % all.count]
     }
 
@@ -309,7 +328,8 @@ final class QuickPasteModel {
             return true
         case kVK_Tab:
             guard filterMode == nil else { return true }
-            cycleSource(flags.contains(.shift) ? -1 : 1)
+            // Tab walks the pastebins on the left; Shift-Tab walks the views across the top.
+            if flags.contains(.shift) { shiftTab() } else { cycle(binSources, 1) }
             return true
         case kVK_Return, kVK_ANSI_KeypadEnter:
             if flags.contains(.command) {
@@ -395,9 +415,13 @@ struct QuickPasteView: View {
             header
             Divider()
             HStack(spacing: 0) {
-                list.frame(minWidth: 280)
+                if model.filterMode == nil {
+                    binColumn.frame(width: 160)
+                    Divider()
+                }
+                list.frame(minWidth: 260)
                 Divider()
-                preview.frame(minWidth: 220, maxWidth: .infinity)
+                preview.frame(minWidth: 200, maxWidth: .infinity)
             }
             Divider()
             footer
@@ -420,24 +444,54 @@ struct QuickPasteView: View {
             if model.filterMode == nil {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
-                        ForEach(model.sources, id: \.0) { source, name, symbol in
+                        ForEach(model.viewSources, id: \.0) { source, name, symbol in
                             Button { model.source = source } label: {
-                                HStack(spacing: 4) {
-                                    Label(name, systemImage: symbol)
-                                    if case .pastebin(let id) = source, let n = model.pastebins.firstIndex(where: { $0.id == id }), n < 9 {
-                                        Text("⌃\(n + 1)").foregroundStyle(.tertiary)
-                                    }
-                                }
-                                .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(model.source == source ? Color.accentColor.opacity(0.25) : .clear, in: .capsule)
+                                Label(name, systemImage: symbol)
+                                    .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(model.source == source ? Color.accentColor.opacity(0.25) : .clear, in: .capsule)
                             }.buttonStyle(.plain)
-                            .help(Self.chipHelp(source, model))
+                            .help("Show these clippings. Shift-Tab moves through this row.")
                         }
+                        Spacer(minLength: 0)
+                        Text("⇧⇥").font(.caption).foregroundStyle(.tertiary)
                     }
                 }
             }
         }
         .padding(.horizontal, 12).padding(.top, 20).padding(.bottom, 8)
+    }
+
+    /// History and the pastebins, down the left. Tab moves through them; ⌃1–⌃9 move clippings into them.
+    var binColumn: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("Pastebins").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("⇥").font(.caption).foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 8).padding(.bottom, 2)
+                ForEach(model.binSources, id: \.0) { source, name, symbol in
+                    Button { model.source = source } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: symbol).frame(width: 16)
+                            Text(name).lineLimit(1)
+                            Spacer(minLength: 4)
+                            if case .pastebin(let id) = source, let n = model.pastebins.firstIndex(where: { $0.id == id }), n < 9 {
+                                Text("⌃\(n + 1)").font(.caption).foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(model.source == source ? Color.accentColor.opacity(0.25) : .clear, in: .rect(cornerRadius: 6))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(Self.chipHelp(source, model))
+                }
+            }
+            .padding(8)
+        }
     }
 
     var currentSourceName: String { model.sources.first { $0.0 == model.source }?.1 ?? "History" }
@@ -575,7 +629,7 @@ struct QuickPasteView: View {
                 hint("⌃1–9", "Move to pastebin"); hint("⌘S", "Stack"); hint("⎋", "Clear")
             } else {
                 hint("↩", "Paste"); hint("⇧↩", "Plain"); hint("⌘↩", "Filter"); hint("⌥↩", "Type")
-                hint("⇥", "Switch"); hint("⌘-click", "Pick several"); hint("⌃1–9", "Move")
+                hint("⇥", "Pastebin"); hint("⇧⇥", "View"); hint("⌘-click", "Pick several"); hint("⌃1–9", "Move")
             }
             Spacer()
         }

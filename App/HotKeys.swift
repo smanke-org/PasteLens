@@ -230,9 +230,38 @@ private func hotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef?, _ d
     let signature = id.signature
     // Carbon delivers hot keys on the main thread's event loop.
     MainActor.assumeIsolated {
-        if signature == RecordingCatcher.signature { RecordingCatcher.fire(value) } else { HotKeyCenter.shared.fire(value) }
+        if signature == RecordingCatcher.signature { RecordingCatcher.fire(value) }
+        else if signature == PanelKeys.signature { PanelKeys.fire(value) }
+        else { HotKeyCenter.shared.fire(value) }
     }
     return noErr
+}
+
+/// Keys Quick Paste holds as hot keys while it's open, because they don't always reach it as
+/// ordinary key presses.
+@MainActor
+enum PanelKeys {
+    static let signature: OSType = 0x504C_5150 // "PLQP"
+    private static var refs: [EventHotKeyRef] = []
+
+    static func begin() {
+        end()
+        HotKeyCenter.shared.installHandlerOnce()
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(UInt32(kVK_Tab), UInt32(shiftKey), EventHotKeyID(signature: signature, id: 1),
+                                         GetApplicationEventTarget(), 0, &ref)
+        if status == noErr, let ref { refs.append(ref) }
+    }
+
+    static func end() {
+        for ref in refs { UnregisterEventHotKey(ref) }
+        refs.removeAll()
+    }
+
+    static func fire(_ id: UInt32) {
+        guard id == 1, QuickPastePanel.shared.isVisible else { return }
+        QuickPastePanel.shared.model.shiftTab()
+    }
 }
 
 /// While a shortcut is being recorded, every modifier combination is briefly registered as a

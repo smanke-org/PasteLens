@@ -237,7 +237,7 @@ struct QuickPasteSettings: View {
                 Grid(alignment: .leading, verticalSpacing: 4) {
                     ForEach([("↩", "Paste"), ("⇧↩", "Paste as plain text"), ("⌥↩", "Type it out (for fields that block pasting)"),
                              ("⌘↩", "Choose a filter, then ↩ to paste the result"), ("⌘1 – ⌘9", "Paste that clipping"),
-                             ("⇥ / ⇧⇥", "Next / previous pastebin"), ("⌘C", "Copy without pasting"), ("⌘S", "Add to stack"),
+                             ("⇥", "Next pastebin, in the column on the left"), ("⇧⇥", "Next view across the top: Pinned, smart pastebins, Snippets"), ("⌘C", "Copy without pasting"), ("⌘S", "Add to stack"),
                              ("⌘P", "Pin"), ("⌘⌫", "Delete"), ("⌘O", "Open in the PasteLens window"), ("⎋", "Close")], id: \.0) { key, text in
                         GridRow { Text(key).font(.body.monospaced()).gridColumnAlignment(.trailing); Text(text) }
                     }
