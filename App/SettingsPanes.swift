@@ -66,6 +66,8 @@ struct GeneralSettings: View {
             Section("Where PasteLens appears") {
                 Toggle("Show in Dock", isOn: $presence.showInDock)
                 Toggle("Show in menu bar", isOn: $presence.showInMenuBar)
+                Toggle("List recent clippings in the menu bar menu", isOn: $prefs.menuRecents)
+                    .disabled(!presence.showInMenuBar)
                 if !presence.showInDock && !presence.showInMenuBar {
                     Text(AppPresence.hiddenEverywhereNote(appName: "PasteLens", settingsName: "Settings"))
                         .font(.callout).foregroundStyle(.secondary)

@@ -218,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Quick Paste", #selector(quickPaste), hotKey: prefs.hotKey(.quickPaste), symbol: "magnifyingglass"))
         menu.addItem(item("Open PasteLens", #selector(showMain), hotKey: prefs.hotKey(.mainWindow), symbol: "macwindow"))
 
-        let recent = ClipStore.shared.recent(10)
+        let recent = prefs.menuRecents ? ClipStore.shared.recent(10) : []
         if !recent.isEmpty {
             menu.addItem(.separator())
             let header = NSMenuItem(title: "Recent", action: nil, keyEquivalent: "")

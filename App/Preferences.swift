@@ -26,6 +26,7 @@ final class Preferences {
         static let releaseToPaste = "paste.releaseToPaste"
         static let moveToTop = "paste.moveToTop"
         static let windowPaste = "historyWindow.pasteWith"
+        static let menuRecents = "menu.showRecent"
         static let rowLines = "quickPaste.rowLines"
         static let quickPasteAtMouse = "quickPaste.atMouse"
         static let quickPasteCount = "quickPaste.visibleRows"
@@ -44,7 +45,7 @@ final class Preferences {
     /// bar choices stay per Mac.
     static let syncedKeys: [String] = [
         Key.maxClippings, Key.maxDays, Key.unlimited, Key.maxClipMB, Key.ignoredApps, Key.captureImages, Key.captureFiles,
-        Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.windowPaste, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
+        Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.windowPaste, Key.menuRecents, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
         Key.sounds, Key.detectSensitive, Key.sensitiveMinutes, Key.ocr, Key.linkPreviews, Key.expansion,
         Key.syncMaxClipMB, "updatePolicy",
     ] + HotKeyAction.allCases.map { Key.hotKeyPrefix + $0.rawValue }
@@ -68,6 +69,8 @@ final class Preferences {
     var moveToTop: Bool { didSet { save(Key.moveToTop, moveToTop) } }
     /// How a clipping is pasted from the history window: double-click, the right-click menu, or both.
     var windowPaste: WindowPaste { didSet { save(Key.windowPaste, windowPaste.rawValue) } }
+    /// Whether the menu bar menu lists the most recent clippings.
+    var menuRecents: Bool { didSet { save(Key.menuRecents, menuRecents) } }
     var rowLines: Int { didSet { save(Key.rowLines, rowLines) } }
     var quickPasteAtMouse: Bool { didSet { save(Key.quickPasteAtMouse, quickPasteAtMouse) } }
     var quickPasteCount: Int { didSet { save(Key.quickPasteCount, quickPasteCount) } }
@@ -103,7 +106,7 @@ final class Preferences {
         defaults.register(defaults: [
             Key.maxClippings: 1_000, Key.maxDays: 0, Key.unlimited: false, Key.maxClipMB: 50.0, Key.ignoredApps: [String](),
             Key.captureImages: true, Key.captureFiles: true, Key.alwaysPlain: false, Key.releaseToPaste: false,
-            Key.moveToTop: true, Key.windowPaste: WindowPaste.both.rawValue, Key.rowLines: 1, Key.quickPasteAtMouse: true, Key.quickPasteCount: 9, Key.sounds: true,
+            Key.moveToTop: true, Key.windowPaste: WindowPaste.both.rawValue, Key.menuRecents: true, Key.rowLines: 1, Key.quickPasteAtMouse: true, Key.quickPasteCount: 9, Key.sounds: true,
             Key.detectSensitive: true, Key.sensitiveMinutes: 2, Key.ocr: true, Key.linkPreviews: true, Key.expansion: false,
             Key.syncContents: true, Key.syncMaxClipMB: 25.0,
         ])
@@ -119,6 +122,7 @@ final class Preferences {
         releaseToPaste = defaults.bool(forKey: Key.releaseToPaste)
         moveToTop = defaults.bool(forKey: Key.moveToTop)
         windowPaste = WindowPaste(rawValue: defaults.string(forKey: Key.windowPaste) ?? "") ?? .both
+        menuRecents = defaults.bool(forKey: Key.menuRecents)
         rowLines = defaults.integer(forKey: Key.rowLines)
         quickPasteAtMouse = defaults.bool(forKey: Key.quickPasteAtMouse)
         quickPasteCount = defaults.integer(forKey: Key.quickPasteCount)
@@ -177,6 +181,7 @@ final class Preferences {
         if moveToTop != fresh.moveToTop { moveToTop = fresh.moveToTop }
         let freshPaste = WindowPaste(rawValue: defaults.string(forKey: Key.windowPaste) ?? "") ?? .both
         if windowPaste != freshPaste { windowPaste = freshPaste }
+        if menuRecents != defaults.bool(forKey: Key.menuRecents) { menuRecents = defaults.bool(forKey: Key.menuRecents) }
         if rowLines != fresh.rowLines { rowLines = fresh.rowLines }
         if quickPasteAtMouse != fresh.quickPasteAtMouse { quickPasteAtMouse = fresh.quickPasteAtMouse }
         if quickPasteCount != fresh.quickPasteCount { quickPasteCount = fresh.quickPasteCount }

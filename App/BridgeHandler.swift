@@ -248,6 +248,16 @@ enum BridgeHandler {
             SyncEngine.shared.deleteCloudData()
             try? await Task.sleep(for: .seconds(3))
             return ["ok": true]
+        case "debug-menu":
+            let menu = NSMenu()
+            (NSApp.delegate as? AppDelegate)?.menuNeedsUpdate(menu)
+            return menu.items.map { $0.isSeparatorItem ? "—" : $0.title }
+        case "debug-set":
+            if let key = args["key"], let value = args["value"] {
+                UserDefaults.standard.set(value == "true" ? true : value == "false" ? false : value as Any, forKey: key)
+                Preferences.shared.reloadFromDefaults()
+            }
+            return ["ok": true]
         case "debug-sync-pull":
             SyncEngine.shared.pull()
             return ["ok": true]
