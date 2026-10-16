@@ -1,7 +1,6 @@
 #!/usr/bin/env swift
-// Generates the app icon in the same periodic-table style as M3 Tracker: atomic number
-// "27", tipped 45° to the left, the "Pl" symbol, and the name along the bottom, on
-// a mint-green gradient.
+// Generates the app icon: a periodic-table style element tile — atomic number
+// "27", tipped 45° to the left, the "Pl" symbol, and the name along the bottom.
 // Run with:
 //   swift Tools/generate_icon.swift
 //
@@ -11,8 +10,6 @@
 //   Resources/AppIcon-small.png — no name, larger symbol, used at 16-64pt
 
 import AppKit
-
-let textColor = NSColor.black
 
 func renderIcon(includeName: Bool) -> NSImage {
 let canvas: CGFloat = 1024
@@ -31,7 +28,7 @@ let cornerRadius = side * 0.215
 
 let tilePath = CGPath(roundedRect: tile, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
 
-// MARK: - Green body
+// MARK: - Orange body
 
 ctx.saveGState()
 ctx.addPath(tilePath)
@@ -39,8 +36,8 @@ ctx.clip()
 
 let colorSpace = CGColorSpaceCreateDeviceRGB()
 let bodyColors = [
-    NSColor(srgbRed: 0.74, green: 0.96, blue: 0.84, alpha: 1.0).cgColor,
-    NSColor(srgbRed: 0.30, green: 0.78, blue: 0.58, alpha: 1.0).cgColor,
+    NSColor(calibratedRed: 0.98, green: 0.49, blue: 0.13, alpha: 1.0).cgColor,
+    NSColor(calibratedRed: 0.92, green: 0.37, blue: 0.02, alpha: 1.0).cgColor,
 ] as CFArray
 let bodyGradient = CGGradient(colorsSpace: colorSpace, colors: bodyColors, locations: [0.0, 1.0])!
 ctx.drawLinearGradient(
@@ -71,7 +68,7 @@ ctx.restoreGState()
 func draw(_ string: String, size: CGFloat, at point: CGPoint) {
     let attributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: size, weight: .bold),
-        .foregroundColor: textColor,
+        .foregroundColor: NSColor.black,
     ]
     NSAttributedString(string: string, attributes: attributes).draw(at: point)
 }
@@ -84,32 +81,29 @@ func size(of string: String, size: CGFloat) -> NSSize {
 }
 
 // Atomic number, top-left, tipped 45° to the left (counterclockwise) about
-// its own center. Nudged up in the small variant so it still reads once the
+// its own centre. Nudged up in the small variant so it still reads once the
 // name is gone.
 let number = "27"
 let numberSize = side * (includeName ? 0.115 : 0.135)
 let numberInset = side * 0.075
 let numberBox = size(of: number, size: numberSize)
-let numberCenter = CGPoint(
+let numberCentre = CGPoint(
     x: tile.minX + numberInset + numberBox.width / 2,
     y: tile.maxY - numberInset - numberBox.height / 2
 )
 ctx.saveGState()
-ctx.translateBy(x: numberCenter.x, y: numberCenter.y)
+ctx.translateBy(x: numberCentre.x, y: numberCentre.y)
 ctx.rotate(by: .pi / 4)
 draw(number, size: numberSize, at: CGPoint(x: -numberBox.width / 2, y: -numberBox.height / 2))
 ctx.restoreGState()
 
-// The element symbol, centered. Without the name below it, it grows and recenters to
-// fill the tile.
-let symbol = "Pl"
-// A two-letter symbol is wider than M3's "M³", so the nameless variant can't grow as far without
-// running into the 27; it sits a little below center to clear it.
+// The element symbol, centered.
+// Without the name below it, the symbol grows and recentres to fill the tile.
 drawSymbol("Pl", in: tile, includeName: includeName, ctx: ctx)
 
 // Name along the bottom.
 if includeName {
-    let nameSize = side * 0.088
+    let nameSize = side * 0.077
     let name = "PasteLens"
     let nameWidth = size(of: name, size: nameSize).width
     draw(name, size: nameSize, at: CGPoint(
