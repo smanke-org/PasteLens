@@ -30,7 +30,7 @@ enum PasswordApps {
 
     /// Adds each installed password manager to the ignore list the first time it's seen.
     static func addInstalled() {
-        let defaults = UserDefaults.standard
+        let defaults = AppDefaults.store
         var offered = Set(defaults.stringArray(forKey: offeredKey) ?? [])
         let prefs = Preferences.shared
         var ignored = prefs.ignoredApps
@@ -40,6 +40,11 @@ enum PasswordApps {
             if !ignored.contains(id) { ignored.append(id) }
         }
         defaults.set(Array(offered).sorted(), forKey: offeredKey)
-        if ignored != prefs.ignoredApps { prefs.ignoredApps = ignored }
+        // Not a choice you made: it mustn't count as newer than the list on your other Macs.
+        if ignored != prefs.ignoredApps {
+            prefs.applyingRemote = true
+            prefs.ignoredApps = ignored
+            prefs.applyingRemote = false
+        }
     }
 }

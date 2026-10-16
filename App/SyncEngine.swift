@@ -61,8 +61,8 @@ final class SyncEngine {
     private(set) var pendingContent = 0
 
     var enabled: Bool {
-        get { UserDefaults.standard.bool(forKey: "sync.enabled") }
-        set { UserDefaults.standard.set(newValue, forKey: "sync.enabled") }
+        get { AppDefaults.store.bool(forKey: "sync.enabled") }
+        set { AppDefaults.store.set(newValue, forKey: "sync.enabled") }
     }
 
     @ObservationIgnored private var key: SymmetricKey?
@@ -84,8 +84,8 @@ final class SyncEngine {
     private var store: ClipStore { ClipStore.shared }
 
     private var stamps: [String: Date] {
-        get { (UserDefaults.standard.dictionary(forKey: "sync.stamps") as? [String: Date]) ?? [:] }
-        set { UserDefaults.standard.set(newValue, forKey: "sync.stamps") }
+        get { (AppDefaults.store.dictionary(forKey: "sync.stamps") as? [String: Date]) ?? [:] }
+        set { AppDefaults.store.set(newValue, forKey: "sync.stamps") }
     }
 
     var folderDescription: String { "iCloud (PasteLens's private database)" }
@@ -120,6 +120,7 @@ final class SyncEngine {
             guard let keyring, let stored = Keychain.loadKey(), SyncCrypto.keyID(for: stored) == keyring.keyID else {
                 key = nil
                 status = .needsPassphrase
+                askForPassphrase()
                 return
             }
             key = stored
@@ -183,7 +184,7 @@ final class SyncEngine {
         enabled = true
         // Everything here goes up once; after that, only changes.
         for (kind, id) in store.allRecordKeys() { outbox.insert(Self.itemName(kind, id)) }
-        for setting in Preferences.syncedKeys where UserDefaults.standard.object(forKey: setting) != nil {
+        for setting in Preferences.syncedKeys where AppDefaults.store.object(forKey: setting) != nil {
             outbox.insert(Self.itemName(.setting, setting))
         }
         saveOutbox()
@@ -218,8 +219,8 @@ final class SyncEngine {
         keyringExists = false
         let zone = zoneID
         Task { _ = try? await database.deleteRecordZone(withID: zone) }
-        UserDefaults.standard.removeObject(forKey: "ck.zoneReady")
-        UserDefaults.standard.removeObject(forKey: "ck.subscribed")
+        AppDefaults.store.removeObject(forKey: "ck.zoneReady")
+        AppDefaults.store.removeObject(forKey: "ck.subscribed")
         try? store.db.set(nil, forKey: "ck.token")
         clearOutbox()
     }
@@ -322,7 +323,7 @@ final class SyncEngine {
     // MARK: Pushing
 
     private func localSettingRecord(_ setting: String) -> SyncRecord? {
-        guard let value = UserDefaults.standard.object(forKey: setting),
+        guard let value = AppDefaults.store.object(forKey: setting),
               let payload = try? PropertyListSerialization.data(fromPropertyList: ["v": value], format: .binary, options: 0) else { return nil }
         return SyncRecord(kind: .setting, id: setting, updatedAt: stamps[setting] ?? Date(timeIntervalSince1970: 0), payload: payload)
     }
@@ -412,7 +413,7 @@ final class SyncEngine {
                        let mine = records.first(where: { $0.recordID == id }) {
                         if let resolved = resolve(mine: mine, server: server) { retry.append(resolved) }
                     } else if ck.code == .zoneNotFound || ck.code == .userDeletedZone {
-                        UserDefaults.standard.removeObject(forKey: "ck.zoneReady")
+                        AppDefaults.store.removeObject(forKey: "ck.zoneReady")
                         try? await ensureZone()
                         return false
                     } else {
@@ -503,7 +504,7 @@ final class SyncEngine {
         } catch let error as CKError where error.code == .zoneNotFound || error.code == .userDeletedZone {
             // The sync data was deleted from another Mac.
             fetching = false
-            UserDefaults.standard.removeObject(forKey: "ck.zoneReady")
+            AppDefaults.store.removeObject(forKey: "ck.zoneReady")
             keyChangedElsewhere()
             return
         } catch {
@@ -566,7 +567,7 @@ final class SyncEngine {
             guard let payload = item.payload,
                   let dict = try? PropertyListSerialization.propertyList(from: payload, format: nil) as? [String: Any],
                   let value = dict["v"] else { return false }
-            UserDefaults.standard.set(value, forKey: item.id)
+            AppDefaults.store.set(value, forKey: item.id)
             var s = stamps
             s[item.id] = item.updatedAt
             stamps = s
@@ -603,14 +604,27 @@ final class SyncEngine {
         pollTimer?.invalidate()
         status = .needsPassphrase
         keyringExists = false
+        askForPassphrase()
+    }
+
+    @ObservationIgnored private var askedThisLaunch = false
+
+    /// Sync is on but waiting for the passphrase: nothing syncs until it's entered, so say so
+    /// by opening Settings at Sync (once per launch) rather than waiting to be noticed.
+    private func askForPassphrase() {
+        guard enabled, !askedThisLaunch else { return }
+        askedThisLaunch = true
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { SettingsWindow.shared.show(tab: "Sync") }
+        }
     }
 
     // MARK: Zone, keyring, devices, subscription
 
     private func ensureZone() async throws {
-        if UserDefaults.standard.string(forKey: "ck.zoneReady") == zoneID.zoneName { return }
+        if AppDefaults.store.string(forKey: "ck.zoneReady") == zoneID.zoneName { return }
         _ = try await database.modifyRecordZones(saving: [CKRecordZone(zoneID: zoneID)], deleting: [])
-        UserDefaults.standard.set(zoneID.zoneName, forKey: "ck.zoneReady")
+        AppDefaults.store.set(zoneID.zoneName, forKey: "ck.zoneReady")
     }
 
     private func fetchKeyring() async throws -> SyncCrypto.Keyring? {
@@ -622,7 +636,7 @@ final class SyncEngine {
         } catch let error as CKError where error.code == .unknownItem {
             return nil
         } catch let error as CKError where error.code == .zoneNotFound || error.code == .userDeletedZone {
-            UserDefaults.standard.removeObject(forKey: "ck.zoneReady")
+            AppDefaults.store.removeObject(forKey: "ck.zoneReady")
             try await ensureZone()
             return nil
         }
@@ -664,13 +678,13 @@ final class SyncEngine {
     private func subscribe() async {
         NSApp.registerForRemoteNotifications()
         let id = "pastelens-zone-\(zoneID.zoneName)"
-        guard UserDefaults.standard.string(forKey: "ck.subscribed") != id else { return }
+        guard AppDefaults.store.string(forKey: "ck.subscribed") != id else { return }
         let subscription = CKRecordZoneSubscription(zoneID: zoneID, subscriptionID: id)
         let info = CKSubscription.NotificationInfo()
         info.shouldSendContentAvailable = true
         subscription.notificationInfo = info
         if (try? await database.modifySubscriptions(saving: [subscription], deleting: [])) != nil {
-            UserDefaults.standard.set(id, forKey: "ck.subscribed")
+            AppDefaults.store.set(id, forKey: "ck.subscribed")
         }
     }
 
@@ -693,7 +707,11 @@ final class SyncEngine {
 enum Keychain {
     static let service = "com.smanke.PasteLens.sync"
     /// Test runs pointed at their own data folder keep their key apart from the real one.
-    static let account = ProcessInfo.processInfo.environment["PASTELENS_DATA_FOLDER"] == nil ? "data-key" : "data-key-test"
+    static let account: String = {
+        let env = ProcessInfo.processInfo.environment
+        guard env["PASTELENS_DATA_FOLDER"] != nil else { return "data-key" }
+        return "data-key-test" + (env["PASTELENS_DEFAULTS_SUITE"].map { "-" + $0 } ?? "")
+    }()
 
     static func saveKey(_ key: SymmetricKey) {
         deleteKey()

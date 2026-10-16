@@ -9,7 +9,7 @@ import PasteLensKit
 @MainActor
 final class Preferences {
     static let shared = Preferences()
-    private let defaults = UserDefaults.standard
+    private let defaults = AppDefaults.store
     /// While true, changes come from another Mac and aren't stamped as local edits.
     @ObservationIgnored var applyingRemote = false
 

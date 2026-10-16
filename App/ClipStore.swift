@@ -666,9 +666,9 @@ enum DeviceIdentity {
             return String(SyncCrypto.sha256Hex(Data(("PasteLens" + uuid).utf8)).prefix(16))
         }
         let key = "deviceID"
-        if let saved = UserDefaults.standard.string(forKey: key) { return saved }
+        if let saved = AppDefaults.store.string(forKey: key) { return saved }
         let made = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16)).lowercased()
-        UserDefaults.standard.set(made, forKey: key)
+        AppDefaults.store.set(made, forKey: key)
         return made
     }()
 

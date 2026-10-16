@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         NSApp.mainMenu = mainMenu()
-        let newInstall = !UserDefaults.standard.bool(forKey: "welcomed")
+        let newInstall = !AppDefaults.store.bool(forKey: "welcomed")
 
         _ = ClipStore.shared
         step("library")
@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         AutoUpdater.shared.start()
         #endif
         if newInstall {
-            UserDefaults.standard.set(true, forKey: "welcomed")
+            AppDefaults.store.set(true, forKey: "welcomed")
             WelcomeWindow.shared.show()
         } else if !AppPresence.showInMenuBar && !AppPresence.showInDock {
             SettingsWindow.shared.show()
@@ -208,6 +208,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let prefs = Preferences.shared
         statusItem?.button?.appearsDisabled = prefs.paused
 
+        if SyncEngine.shared.enabled, SyncEngine.shared.status == .needsPassphrase {
+            let warn = item("Enter Sync Passphrase…", #selector(showSyncSettings))
+            warn.image = NSImage(systemSymbolName: "exclamationmark.icloud", accessibilityDescription: nil)
+            menu.addItem(warn)
+            let note = NSMenuItem(title: "Nothing syncs with your other Macs until you do", action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            menu.addItem(note)
+            menu.addItem(.separator())
+        }
         if !Paster.trusted {
             let warn = item("Allow Pasting into Apps…", #selector(allowAccessibility))
             warn.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)

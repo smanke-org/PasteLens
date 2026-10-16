@@ -254,8 +254,10 @@ enum BridgeHandler {
             return menu.items.map { $0.isSeparatorItem ? "—" : $0.title }
         case "debug-set":
             if let key = args["key"], let value = args["value"] {
-                UserDefaults.standard.set(value == "true" ? true : value == "false" ? false : value as Any, forKey: key)
+                let parsed: Any = value == "true" ? true : value == "false" ? false : Int(value).map { $0 as Any } ?? value
+                AppDefaults.store.set(parsed, forKey: key)
                 Preferences.shared.reloadFromDefaults()
+                if args["as-user"] == "true" { SyncEngine.shared.settingChanged(key) }
             }
             return ["ok": true]
         case "debug-sync-pull":

@@ -25,9 +25,9 @@ enum UpdatePolicy: String, CaseIterable {
     static let key = "updatePolicy"
 
     static var current: UpdatePolicy {
-        if let raw = UserDefaults.standard.string(forKey: key), let policy = UpdatePolicy(rawValue: raw) { return policy }
+        if let raw = AppDefaults.store.string(forKey: key), let policy = UpdatePolicy(rawValue: raw) { return policy }
         // 1.0.8 and earlier had only an on/off switch for checking.
-        if UserDefaults.standard.object(forKey: "checkForUpdatesAutomatically") as? Bool == false { return .off }
+        if AppDefaults.store.object(forKey: "checkForUpdatesAutomatically") as? Bool == false { return .off }
         return .ask
     }
 }
@@ -48,7 +48,7 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
     var policy = UpdatePolicy.current {
         didSet {
             guard policy != oldValue else { return }
-            UserDefaults.standard.set(policy.rawValue, forKey: UpdatePolicy.key)
+            AppDefaults.store.set(policy.rawValue, forKey: UpdatePolicy.key)
             SyncEngine.shared.settingChanged(UpdatePolicy.key)
             if policy != .off { requestNotificationPermission(); check() }
             if policy != .automatic { staged = nil }
@@ -126,7 +126,7 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
                 case .off:
                     return
                 case .ask:
-                    guard UserDefaults.standard.string(forKey: "skippedUpdateVersion") != release.version else { return }
+                    guard AppDefaults.store.string(forKey: "skippedUpdateVersion") != release.version else { return }
                     notifyAvailable(release.version)
                 case .automatic:
                     let app = try await UpdateController.downloadAndStage(release)
@@ -202,11 +202,11 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
             // Checked again now: the staged copy may have waited hours in a folder that other
             // processes of this user can write to.
             try UpdateController.verifyCandidate(app, version: version)
-            UserDefaults.standard.set(AppInfo.version, forKey: Self.installedFromKey)
+            AppDefaults.store.set(AppInfo.version, forKey: Self.installedFromKey)
             NSLog("PasteLens: installing update \(version)")
             try UpdateController.installAndRelaunch(from: app)
         } catch {
-            UserDefaults.standard.removeObject(forKey: Self.installedFromKey)
+            AppDefaults.store.removeObject(forKey: Self.installedFromKey)
             NSLog("PasteLens: update \(version) not installed: \(error.localizedDescription)")
             lastError = error.localizedDescription
             staged = nil
@@ -237,16 +237,16 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
 
     /// After an automatic install, the relaunched app says what changed.
     private func announceIfJustUpdated() {
-        guard let from = UserDefaults.standard.string(forKey: Self.installedFromKey) else { return }
-        UserDefaults.standard.removeObject(forKey: Self.installedFromKey)
+        guard let from = AppDefaults.store.string(forKey: Self.installedFromKey) else { return }
+        AppDefaults.store.removeObject(forKey: Self.installedFromKey)
         guard from != AppInfo.version else { return }
         notify(id: "updated-\(AppInfo.version)", title: "PasteLens updated to \(AppInfo.version)",
                body: "It installed itself while your Mac wasn't in use.", installable: false)
     }
 
     private func notifyAvailable(_ version: String) {
-        guard UserDefaults.standard.string(forKey: Self.notifiedVersionKey) != version else { return }
-        UserDefaults.standard.set(version, forKey: Self.notifiedVersionKey)
+        guard AppDefaults.store.string(forKey: Self.notifiedVersionKey) != version else { return }
+        AppDefaults.store.set(version, forKey: Self.notifiedVersionKey)
         notify(id: "available-\(version)", title: "PasteLens \(version) is available",
                body: "Click to review and install it. You're on \(AppInfo.version).", installable: true)
     }

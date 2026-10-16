@@ -18,18 +18,18 @@ enum AppPresence {
     }
 
     static var showInDock: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.dock) }
+        get { AppDefaults.store.bool(forKey: Key.dock) }
         set {
-            guard newValue != showInDock || UserDefaults.standard.object(forKey: Key.dock) == nil else { return }
-            UserDefaults.standard.set(newValue, forKey: Key.dock)
+            guard newValue != showInDock || AppDefaults.store.object(forKey: Key.dock) == nil else { return }
+            AppDefaults.store.set(newValue, forKey: Key.dock)
         }
     }
 
     static var showInMenuBar: Bool {
-        get { UserDefaults.standard.object(forKey: Key.menuBar) as? Bool ?? true }
+        get { AppDefaults.store.object(forKey: Key.menuBar) as? Bool ?? true }
         set {
-            guard newValue != showInMenuBar || UserDefaults.standard.object(forKey: Key.menuBar) == nil else { return }
-            UserDefaults.standard.set(newValue, forKey: Key.menuBar)
+            guard newValue != showInMenuBar || AppDefaults.store.object(forKey: Key.menuBar) == nil else { return }
+            AppDefaults.store.set(newValue, forKey: Key.menuBar)
             NotificationCenter.default.post(name: menuBarDidChange, object: nil)
         }
     }

@@ -42,7 +42,7 @@ enum UpdateController {
                     return
                 }
                 // A version the user skipped is not raised again on its own.
-                if silent, UserDefaults.standard.string(forKey: "skippedUpdateVersion") == release.version {
+                if silent, AppDefaults.store.string(forKey: "skippedUpdateVersion") == release.version {
                     return
                 }
 
@@ -65,7 +65,7 @@ enum UpdateController {
                 case .cancel:
                     return
                 case .skip:
-                    UserDefaults.standard.set(release.version, forKey: "skippedUpdateVersion")
+                    AppDefaults.store.set(release.version, forKey: "skippedUpdateVersion")
                     UpdateAvailability.shared.pending = nil
                     return
                 case .install:
