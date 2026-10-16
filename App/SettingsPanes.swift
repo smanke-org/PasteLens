@@ -139,8 +139,11 @@ struct HistorySettings: View {
     var body: some View {
         Form {
             Section {
+                Toggle("Unlimited history", isOn: $prefs.unlimited)
                 NumberField(title: "Clippings to keep", value: $prefs.maxClippings, zeroMeans: "keep all")
+                    .disabled(prefs.unlimited)
                 NumberField(title: "Days to keep", value: $prefs.maxDays, zeroMeans: "forever", range: 0...36_500)
+                    .disabled(prefs.unlimited)
                 LabeledContent("Ignore clippings larger than") {
                     HStack {
                         TextField("", value: $prefs.maxClipMB, format: .number).multilineTextAlignment(.trailing).frame(width: 70)
@@ -148,11 +151,14 @@ struct HistorySettings: View {
                     }
                 }
             } header: { Text("History") } footer: {
-                Text("History now holds \(store.history.count.formatted()) clipping\(store.history.count == 1 ? "" : "s"). The oldest go first once there are more than you keep. Pinned clippings and those saved in a pastebin are never removed. Type 0 to keep everything.")
+                Text(prefs.unlimited
+                     ? "History now holds \(store.history.count.formatted()) clipping\(store.history.count == 1 ? "" : "s"), and nothing is removed however many there are or however old they get. Turn this off to use the limits again."
+                     : "History now holds \(store.history.count.formatted()) clipping\(store.history.count == 1 ? "" : "s"). The oldest go first once there are more than you keep. Pinned clippings and those saved in a pastebin are never removed. Type 0 to keep everything.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .onChange(of: prefs.maxClippings) { store.pruneHistory() }
             .onChange(of: prefs.maxDays) { store.pruneHistory() }
+            .onChange(of: prefs.unlimited) { store.pruneHistory() }
             Section("Record") {
                 Toggle("Images", isOn: $prefs.captureImages)
                 Toggle("Files and folders", isOn: $prefs.captureFiles)

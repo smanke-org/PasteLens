@@ -16,6 +16,7 @@ final class Preferences {
     enum Key {
         static let maxClippings = "history.maxClippings"
         static let maxDays = "history.maxDays"
+        static let unlimited = "history.unlimited"
         static let maxClipMB = "history.maxClipMB"
         static let ignoredApps = "history.ignoredApps"
         static let captureImages = "history.captureImages"
@@ -41,7 +42,7 @@ final class Preferences {
     /// Settings that sync between Macs. Sync's own switches, pausing and the Dock and menu
     /// bar choices stay per Mac.
     static let syncedKeys: [String] = [
-        Key.maxClippings, Key.maxDays, Key.maxClipMB, Key.ignoredApps, Key.captureImages, Key.captureFiles,
+        Key.maxClippings, Key.maxDays, Key.unlimited, Key.maxClipMB, Key.ignoredApps, Key.captureImages, Key.captureFiles,
         Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
         Key.sounds, Key.detectSensitive, Key.sensitiveMinutes, Key.ocr, Key.linkPreviews, Key.expansion,
         Key.syncMaxClipMB, "updatePolicy",
@@ -51,6 +52,8 @@ final class Preferences {
 
     var maxClippings: Int { didSet { save(Key.maxClippings, maxClippings) } }
     var maxDays: Int { didSet { save(Key.maxDays, maxDays) } }
+    /// Keep every clipping, ignoring both limits. The numbers are kept for when it's turned off.
+    var unlimited: Bool { didSet { save(Key.unlimited, unlimited) } }
     var maxClipMB: Double { didSet { save(Key.maxClipMB, maxClipMB) } }
     var ignoredApps: [String] { didSet { save(Key.ignoredApps, ignoredApps) } }
     var captureImages: Bool { didSet { save(Key.captureImages, captureImages) } }
@@ -95,7 +98,7 @@ final class Preferences {
 
     private init() {
         defaults.register(defaults: [
-            Key.maxClippings: 1_000, Key.maxDays: 0, Key.maxClipMB: 50.0, Key.ignoredApps: [String](),
+            Key.maxClippings: 1_000, Key.maxDays: 0, Key.unlimited: false, Key.maxClipMB: 50.0, Key.ignoredApps: [String](),
             Key.captureImages: true, Key.captureFiles: true, Key.alwaysPlain: false, Key.releaseToPaste: false,
             Key.moveToTop: true, Key.rowLines: 1, Key.quickPasteAtMouse: true, Key.quickPasteCount: 9, Key.sounds: true,
             Key.detectSensitive: true, Key.sensitiveMinutes: 2, Key.ocr: true, Key.linkPreviews: true, Key.expansion: false,
@@ -103,6 +106,7 @@ final class Preferences {
         ])
         maxClippings = defaults.integer(forKey: Key.maxClippings)
         maxDays = defaults.integer(forKey: Key.maxDays)
+        unlimited = defaults.bool(forKey: Key.unlimited)
         maxClipMB = defaults.double(forKey: Key.maxClipMB)
         ignoredApps = defaults.stringArray(forKey: Key.ignoredApps) ?? []
         captureImages = defaults.bool(forKey: Key.captureImages)
@@ -138,7 +142,9 @@ final class Preferences {
         hotKeys = keys
     }
 
-    var retention: RetentionPolicy { RetentionPolicy(maxClippings: maxClippings, maxDays: maxDays) }
+    var retention: RetentionPolicy {
+        unlimited ? RetentionPolicy(maxClippings: 0, maxDays: 0) : RetentionPolicy(maxClippings: maxClippings, maxDays: maxDays)
+    }
 
     private func save(_ key: String, _ value: Any) {
         defaults.set(value, forKey: key)
@@ -157,6 +163,7 @@ final class Preferences {
         let fresh = Preferences.Snapshot(defaults)
         if maxClippings != fresh.maxClippings { maxClippings = fresh.maxClippings }
         if maxDays != fresh.maxDays { maxDays = fresh.maxDays }
+        if unlimited != fresh.unlimited { unlimited = fresh.unlimited }
         if maxClipMB != fresh.maxClipMB { maxClipMB = fresh.maxClipMB }
         if ignoredApps != fresh.ignoredApps { ignoredApps = fresh.ignoredApps }
         if captureImages != fresh.captureImages { captureImages = fresh.captureImages }
@@ -183,10 +190,11 @@ final class Preferences {
         let maxClippings, maxDays, rowLines, quickPasteCount, sensitiveMinutes: Int
         let maxClipMB, syncMaxClipMB: Double
         let ignoredApps: [String]
-        let captureImages, captureFiles, alwaysPlain, releaseToPaste, moveToTop, quickPasteAtMouse, sounds,
+        let unlimited, captureImages, captureFiles, alwaysPlain, releaseToPaste, moveToTop, quickPasteAtMouse, sounds,
             detectSensitive, ocr, linkPreviews, expansion: Bool
         init(_ d: UserDefaults) {
             maxClippings = d.integer(forKey: Key.maxClippings); maxDays = d.integer(forKey: Key.maxDays)
+            unlimited = d.bool(forKey: Key.unlimited)
             rowLines = d.integer(forKey: Key.rowLines); quickPasteCount = d.integer(forKey: Key.quickPasteCount)
             sensitiveMinutes = d.integer(forKey: Key.sensitiveMinutes); maxClipMB = d.double(forKey: Key.maxClipMB)
             syncMaxClipMB = d.double(forKey: Key.syncMaxClipMB); ignoredApps = d.stringArray(forKey: Key.ignoredApps) ?? []
