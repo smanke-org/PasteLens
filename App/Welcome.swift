@@ -58,7 +58,7 @@ struct WelcomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Everything you copy, one keystroke away").font(.title2.bold())
             feature("clock.arrow.circlepath", "History", "PasteLens keeps what you copy. Save keepers into pastebins; smart pastebins sort the rest.")
-            feature("magnifyingglass", "Quick Paste — ⇧⌘V", "Search and paste from any app. Tab switches pastebins.")
+            feature("magnifyingglass", "Quick Paste — ⌃`", "Search and paste from any app. Tab switches pastebins.")
             feature("camera.filters", "Filters — ⌘↩", "Clean up, convert, translate or rewrite text before it's pasted.")
             feature("square.stack.3d.up", "Stack", "Queue several clippings, then paste them one after another.")
             feature("text.badge.plus", "Snippets", "Reusable text with dates, fill-in fields and abbreviations.")
@@ -96,7 +96,7 @@ struct WelcomeView: View {
             Text("Turn on sync to share history, pastebins, filters, snippets and settings with your other Macs through iCloud. Everything is encrypted with AES-256 on this Mac using a passphrase only you know.")
             Button("Set Up Sync…") { SettingsWindow.shared.show(tab: "Sync") }
             Divider()
-            Text("Find PasteLens in the menu bar (the clipboard icon). Press ⇧⌘V anywhere to start.")
+            Text("Find PasteLens in the menu bar (the clipboard icon). Press ⌃` anywhere to start.")
                 .foregroundStyle(.secondary)
         }
     }

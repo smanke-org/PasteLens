@@ -273,10 +273,12 @@ enum HotKeyAction: String, CaseIterable, Identifiable {
 
     var defaultKey: HotKey? {
         switch self {
-        case .quickPaste: HotKey(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | shiftKey), display: "⇧⌘V")
+        case .quickPaste: HotKey(keyCode: UInt32(kVK_ANSI_Grave), modifiers: UInt32(controlKey), display: "⌃`")
+        case .mainWindow: HotKey(keyCode: UInt32(kVK_ANSI_Grave), modifiers: UInt32(cmdKey), display: "⌘`")
         case .pastePlain: HotKey(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | shiftKey | optionKey), display: "⌥⇧⌘V")
         case .pasteFromStack: HotKey(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | shiftKey | controlKey), display: "⌃⇧⌘V")
         case .addToStack: HotKey(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey | controlKey), display: "⌃⇧⌘C")
+        case .snippets: HotKey(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(cmdKey | optionKey | controlKey), display: "⌃⌥⌘S")
         default: nil
         }
     }
