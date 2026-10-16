@@ -36,10 +36,10 @@ public struct SmartPastebin: Codable, Identifiable, Hashable, Sendable {
     }
 
     public static let defaults: [SmartPastebin] = [
-        SmartPastebin(name: "Links", symbol: "link", colorName: "teal", rules: [SmartRule(field: .kind, op: .is, value: ClipKind.url.rawValue)], order: 1),
-        SmartPastebin(name: "Images", symbol: "photo", colorName: "green", rules: [SmartRule(field: .kind, op: .is, value: ClipKind.image.rawValue)], order: 2),
-        SmartPastebin(name: "Colors", symbol: "paintpalette", colorName: "pink", rules: [SmartRule(field: .kind, op: .is, value: ClipKind.color.rawValue)], order: 3),
-        SmartPastebin(name: "Today", symbol: "calendar", colorName: "orange", rules: [SmartRule(field: .age, op: .lessThan, value: "1")], order: 4),
+        SmartPastebin(id: DefaultContent.stableID("smart.links"), name: "Links", symbol: "link", colorName: "teal", rules: [SmartRule(field: .kind, op: .is, value: ClipKind.url.rawValue)], order: 1),
+        SmartPastebin(id: DefaultContent.stableID("smart.images"), name: "Images", symbol: "photo", colorName: "green", rules: [SmartRule(field: .kind, op: .is, value: ClipKind.image.rawValue)], order: 2),
+        SmartPastebin(id: DefaultContent.stableID("smart.colors"), name: "Colors", symbol: "paintpalette", colorName: "pink", rules: [SmartRule(field: .kind, op: .is, value: ClipKind.color.rawValue)], order: 3),
+        SmartPastebin(id: DefaultContent.stableID("smart.today"), name: "Today", symbol: "calendar", colorName: "orange", rules: [SmartRule(field: .age, op: .lessThan, value: "1")], order: 4),
     ]
 }
 

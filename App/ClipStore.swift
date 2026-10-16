@@ -451,6 +451,7 @@ final class ClipStore {
 /// A stable, anonymous id for this Mac: a hash of the hardware UUID.
 enum DeviceIdentity {
     static let id: String = {
+        if let override = ProcessInfo.processInfo.environment["PASTELENS_DEVICE_ID"] { return override }
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
         defer { IOObjectRelease(service) }
         if let uuid = IORegistryEntryCreateCFProperty(service, "IOPlatformUUID" as CFString, kCFAllocatorDefault, 0)?
@@ -464,5 +465,5 @@ enum DeviceIdentity {
         return made
     }()
 
-    static var name: String { Host.current().localizedName ?? "Mac" }
+    static var name: String { ProcessInfo.processInfo.environment["PASTELENS_DEVICE_NAME"] ?? Host.current().localizedName ?? "Mac" }
 }

@@ -151,7 +151,7 @@ struct Sidebar: View {
                 label("Filters", "camera.filters", count: store.library.filters.count).tag(MainState.Section.filters)
             }
         }
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 if Preferences.shared.paused {
                     Label("Recording paused", systemImage: "pause.circle.fill").foregroundStyle(.orange)
@@ -161,6 +161,7 @@ struct Sidebar: View {
                 }
             }
             .font(.caption).foregroundStyle(.secondary).padding(10).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.bar)
         }
     }
 

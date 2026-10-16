@@ -56,6 +56,14 @@ extension ColorText.RGBA {
     var color: Color { Color(.sRGB, red: r, green: g, blue: b, opacity: a) }
 }
 
+enum RelativeTime {
+    /// "just now" for the last minute (the system format says "in 0 sec." when clocks differ slightly).
+    static func string(_ date: Date, now: Date = Date()) -> String {
+        if abs(now.timeIntervalSince(date)) < 60 { return "just now" }
+        return date.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated))
+    }
+}
+
 /// One clipping in a list: kind icon or thumbnail, text, source and age.
 struct ClipRowContent: View {
     let clip: Clipping
@@ -77,7 +85,7 @@ struct ClipRowContent: View {
                     if let note = clip.note, !note.isEmpty { Image(systemName: "note.text"); Text(note).lineLimit(1) }
                     else if showsSource, let source = clip.sourceName { Text(source).lineLimit(1) }
                     Text("·")
-                    Text(clip.copiedAt, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+                    Text(RelativeTime.string(clip.copiedAt))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

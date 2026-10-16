@@ -7,6 +7,8 @@ enum BridgeHandler {
     private static var server: BridgeServer?
 
     static func start() {
+        // macOS only lets the system create a group container; asking for its URL does that.
+        _ = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Bridge.appGroup)
         let server = BridgeServer { command, args in try await BridgeHandler.handle(command, args) }
         do {
             try server.start()
@@ -139,6 +141,41 @@ enum BridgeHandler {
                 return ["ok": true, "id": new.id.uuidString]
             }
             throw Bridge.Failure("Give --id, --text or --image-file.")
+
+        case "add-clipping":
+            var bins: [UUID] = []
+            if let raw = args["pastebin-id"] {
+                guard let id = UUID(uuidString: raw), store.library.pastebins.contains(where: { $0.id == id }) else { throw Bridge.Failure("Pastebin not found: \(raw)") }
+                bins = [id]
+            }
+            let new = store.add(.text(args["text"] ?? ""), title: args["title"], source: (nil, "pastelens"), pastebins: bins)
+            return describe(new)
+
+        #if DEBUG
+        case "debug-sync-setup":
+            try await SyncEngine.shared.setUp(passphrase: args["passphrase"] ?? "")
+            return ["ok": true]
+        case "debug-sync-status":
+            let sync = SyncEngine.shared
+            return ["status": sync.status.summary, "devices": sync.devices.map(\.name), "pending": sync.pendingContent,
+                    "clippings": store.library.clippings.count, "hasContent": store.library.clippings.filter { store.hasContent($0.id) }.count]
+        case "debug-show":
+            switch args["window"] ?? "" {
+            case "quickpaste": QuickPastePanel.shared.show()
+            case "main": MainWindow.shared.show()
+            case "filters": MainWindow.shared.state.section = .filters; MainWindow.shared.show()
+            case "snippets": MainWindow.shared.state.section = .snippets; MainWindow.shared.show()
+            case "stack": StackWindow.shared.show()
+            case "welcome": WelcomeWindow.shared.show()
+            case "close": NSApp.windows.forEach { $0.orderOut(nil) }
+            default: SettingsWindow.shared.show(tab: args["window"])
+            }
+            if let id = args["select"].flatMap(UUID.init(uuidString:)) { MainWindow.shared.state.selection = [id] }
+            return ["ok": true]
+        case "debug-sync-pull":
+            SyncEngine.shared.pull()
+            return ["ok": true]
+        #endif
 
         case "paste-clipboard":
             guard Paster.trusted else {

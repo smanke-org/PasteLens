@@ -40,6 +40,13 @@ public enum Bridge {
         /// Changes or deletes data, or acts on the screen; tools ask before running these.
         public var mutates: Bool
         public var mcpName: String { name.replacingOccurrences(of: "-", with: "_") }
+
+        public init(name: String, summary: String, parameters: [Parameter], mutates: Bool) {
+            self.name = name
+            self.summary = summary
+            self.parameters = parameters
+            self.mutates = mutates
+        }
     }
 
     public static let commands: [Command] = [
@@ -81,6 +88,11 @@ public enum Bridge {
             Parameter("text", "Text to copy."),
             Parameter("image-base64", "Image bytes, base64-encoded."),
             Parameter("mime-type", "Image type, such as image/png (default image/png)."),
+        ], mutates: true),
+        Command(name: "add-clipping", summary: "Save text as a new clipping without touching the clipboard.", parameters: [
+            Parameter("text", required: true, "The text."),
+            Parameter("pastebin-id", "Also save it into this pastebin."),
+            Parameter("title", "A title to show instead of the first line."),
         ], mutates: true),
         Command(name: "paste-clipboard", summary: "Paste the clipboard into the frontmost app (needs Accessibility permission).", parameters: [], mutates: true),
         Command(name: "add-to-stack", summary: "Add clippings to the paste stack, to paste one after another.", parameters: [

@@ -278,6 +278,16 @@ import Testing
         #expect(macB.clippings.map(\.id) == [a.id])
     }
 
+    @Test func defaultsHaveTheSameIDsOnEveryMac() {
+        #expect(DefaultContent.filters().map(\.id) == DefaultContent.filters().map(\.id))
+        #expect(DefaultContent.snippets().map(\.id) == DefaultContent.snippets().map(\.id))
+        #expect(Set(DefaultContent.filters().map(\.id)).count == DefaultContent.filters().count)
+        var a = Library(), b = Library()
+        a.pastebins = DefaultContent.pastebins(); b.pastebins = DefaultContent.pastebins()
+        _ = SyncMerge.merge([snapshot("A", a)], into: &b, localSettings: [:])
+        #expect(b.pastebins.count == 1)
+    }
+
     @Test func sensitiveNeverLeaves() {
         var lib = Library()
         var c = clip("secret", at: Date())

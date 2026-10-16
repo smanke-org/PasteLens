@@ -14,6 +14,8 @@ final class ClipboardMonitor {
     private(set) var lastSkipped: String?
 
     func start() {
+        // Test runs of a second copy leave the real clipboard to the first.
+        if ProcessInfo.processInfo.environment["PASTELENS_NO_CAPTURE"] != nil { return }
         timer?.invalidate()
         let timer = Timer(timeInterval: 0.25, repeats: true) { _ in
             MainActor.assumeIsolated { ClipboardMonitor.shared.poll() }

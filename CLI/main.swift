@@ -40,7 +40,13 @@ guard let name = arguments.first, !["help", "-h", "--help"].contains(name) else 
     exit(arguments.isEmpty ? 1 : 0)
 }
 arguments.removeFirst()
-guard let command = Bridge.command(named: name) else { fail("Unknown command '\(name)'. Run `pastelens help`.") }
+#if DEBUG
+// Debug builds pass test-only commands (debug-…) straight through.
+let debugCommand: Bridge.Command? = name.hasPrefix("debug-") ? Bridge.Command(name: name, summary: "", parameters: [], mutates: true) : nil
+#else
+let debugCommand: Bridge.Command? = nil
+#endif
+guard let command = Bridge.command(named: name) ?? debugCommand else { fail("Unknown command '\(name)'. Run `pastelens help`.") }
 
 var args: [String: String] = [:]
 var output: String?

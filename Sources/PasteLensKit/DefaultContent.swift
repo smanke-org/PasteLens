@@ -1,11 +1,20 @@
 import Foundation
 
-/// The filters, pastebins and snippets a new library starts with.
+/// The filters, pastebins and snippets a new library starts with. Their ids are derived from
+/// a fixed key, so the copies each Mac seeds are the same records and sync merges them
+/// instead of showing two of everything.
 public enum DefaultContent {
+    public static func stableID(_ key: String) -> UUID {
+        let hash = Array(SyncCrypto.sha256Hex(Data("PasteLens default \(key)".utf8)).prefix(32))
+        let s = String(hash)
+        let parts = [s.prefix(8), s.dropFirst(8).prefix(4), s.dropFirst(12).prefix(4), s.dropFirst(16).prefix(4), s.dropFirst(20)]
+        return UUID(uuidString: parts.map(String.init).joined(separator: "-"))!
+    }
+
     public static func filters() -> [Filter] {
         typealias S = FilterStep
         func f(_ key: String, _ name: String, _ group: String, _ details: String, _ steps: [S]) -> Filter {
-            Filter(name: name, details: details, group: group, steps: steps, builtInKey: key)
+            Filter(id: stableID("filter." + key), name: name, details: details, group: group, steps: steps, builtInKey: key)
         }
         return [
             f("plain", "Plain Text", "Formatting", "Paste without styling.", [S(.plainText)]),
@@ -86,15 +95,16 @@ public enum DefaultContent {
     }
 
     public static func snippets() -> [Snippet] {
-        [
+        let list = [
             Snippet(name: "Today's Date", abbreviation: ";date", template: "{date:yyyy-MM-dd}", group: "Dates"),
             Snippet(name: "Timestamp", abbreviation: ";now", template: "{date:yyyy-MM-dd HH:mm}", group: "Dates"),
             Snippet(name: "Email Signature", abbreviation: ";sig", template: "Best regards,\n{input:Your Name}", group: "Email"),
             Snippet(name: "Meeting Follow-up", template: "Hi {input:Name},\n\nThanks for meeting on {weekday}. As discussed, {cursor}\n\nBest,", group: "Email"),
         ]
+        return list.map { var s = $0; s.id = stableID("snippet." + s.name); return s }
     }
 
     public static func pastebins() -> [Pastebin] {
-        [Pastebin(name: "Saved", symbol: "star", colorName: "yellow", order: 1)]
+        [Pastebin(id: stableID("pastebin.saved"), name: "Saved", symbol: "star", colorName: "yellow", order: 1)]
     }
 }
