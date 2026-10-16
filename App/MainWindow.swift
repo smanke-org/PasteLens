@@ -14,7 +14,7 @@ final class MainWindow: NSObject, NSWindowDelegate {
     func show(selecting clip: UUID? = nil) {
         Activity.shared.touch()
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 680),
+            let window = EscapeClosingWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 680),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                                   backing: .buffered, defer: false)
             window.title = "PasteLens"
@@ -31,6 +31,15 @@ final class MainWindow: NSObject, NSWindowDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+}
+
+/// Esc closes the window. A search field or editor that's in use gets the key first, so Esc
+/// there still clears the search or ends editing; the next Esc closes the window.
+final class EscapeClosingWindow: NSWindow {
+    override func cancelOperation(_ sender: Any?) {
+        if attachedSheet != nil { return }
+        performClose(sender)
     }
 }
 
