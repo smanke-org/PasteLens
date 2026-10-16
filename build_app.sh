@@ -20,6 +20,12 @@ for f in MacOS/PasteLens Helpers/pastelens Helpers/pastelens-mcp; do
   lipo -archs "$APP/Contents/$f" | grep -q "x86_64 arm64\|arm64 x86_64" || { echo "$f isn't universal." >&2; exit 1; }
 done
 
+for f in MacOS/PasteLens Helpers/pastelens Helpers/pastelens-mcp; do
+  if codesign -d --entitlements - "$APP/Contents/$f" 2>/dev/null | grep -q get-task-allow; then
+    echo "$f carries get-task-allow; notarization would reject it." >&2; exit 1
+  fi
+done
+
 mkdir -p .build/app
 ditto "$APP" .build/app/PasteLens.app
 codesign --verify --deep --strict .build/app/PasteLens.app

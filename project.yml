@@ -35,6 +35,9 @@ settings:
   configs:
     Debug:
       ONLY_ACTIVE_ARCH: YES
+    Release:
+      # Xcode otherwise adds get-task-allow, which notarization rejects.
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
     AppStore:
       CODE_SIGN_STYLE: Automatic
       CODE_SIGN_IDENTITY: "Apple Development"
