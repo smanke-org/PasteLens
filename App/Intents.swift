@@ -152,7 +152,7 @@ struct AddClippingIntent: AppIntent {
     @MainActor func perform() async throws -> some IntentResult & ReturnsValue<ClippingEntity> {
         var bins: [UUID] = []
         if let id = pastebin.flatMap({ UUID(uuidString: $0.id) }), ClipStore.shared.library.pastebins.contains(where: { $0.id == id }) { bins = [id] }
-        return .result(value: ClippingEntity(ClipStore.shared.add(.text(text), source: (nil, "Shortcuts"), pastebins: bins)))
+        return .result(value: ClippingEntity(ClipStore.shared.add(.text(text), source: (nil, "Shortcuts"), inHistory: bins.isEmpty, pastebins: bins)))
     }
 }
 

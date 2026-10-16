@@ -129,7 +129,10 @@ struct Sidebar: View {
                         .tag(MainState.Section.clips(.pastebin(bin.id)))
                         .dropDestination(for: String.self) { items, _ in
                             let ids = items.compactMap(UUID.init(uuidString:)).filter { store.clip($0) != nil }
-                            if !ids.isEmpty { store.save(ids, to: bin.id); return true }
+                            if !ids.isEmpty {
+                                if case .clips(let scope) = state.section { store.move(ids, to: bin.id, from: scope) } else { store.move(ids, to: bin.id) }
+                                return true
+                            }
                             // Text dragged in from another app becomes a clipping saved here.
                             for text in items where UUID(uuidString: text) == nil { store.add(.text(text), inHistory: false, pastebins: [bin.id]) }
                             return true
@@ -258,7 +261,7 @@ struct ClipList: View {
         .confirmationDialog("Clear History?", isPresented: $confirmClear) {
             Button("Clear History", role: .destructive) { store.clearHistory() }
         } message: {
-            Text("Every clipping in History is deleted, on all your Macs if sync is on. Pinned clippings and clippings saved in a pastebin stay.")
+            Text("Every clipping in History is deleted, on all your Macs if sync is on. Clippings in your pastebins and pinned clippings stay.")
         }
         .sheet(item: $shortcutFor) { ClipShortcutSheet(clip: $0) }
         .navigationTitle(title)
@@ -278,7 +281,7 @@ struct ClipList: View {
     var emptyDetail: String {
         switch scope {
         case .history: "Everything you copy appears here."
-        case .pastebin: "Drag clippings here, or use Save to Pastebin."
+        case .pastebin: "Drag clippings here, or use Move to Pastebin."
         case .pinned: "Pinned clippings stay no matter how full History gets."
         default: "No clippings match this pastebin's rules yet."
         }
@@ -341,12 +344,12 @@ struct ClipMenu: View {
             Divider()
         }
         Button(clips.allSatisfy(\.pinned) ? "Unpin" : "Pin") { store.setPinned(ids, !clips.allSatisfy(\.pinned)) }
-        Menu("Save to Pastebin") {
-            ForEach(store.library.pastebins.sorted { $0.order < $1.order }) { bin in
-                Button(bin.name) { store.save(ids, to: bin.id) }
+        Menu("Move to Pastebin") {
+            ForEach(store.library.pastebins.sorted { $0.order < $1.order }.filter { scope != .pastebin($0.id) }) { bin in
+                Button(bin.name) { store.move(ids, to: bin.id, from: scope) }
             }
         }
-        if case .pastebin(let id) = scope { Button("Remove from This Pastebin") { store.remove(ids, from: id) } }
+        if case .pastebin(let id) = scope { Button("Move Back to History") { store.remove(ids, from: id) } }
         Button("Add to Stack") { StackController.shared.add(ids) }
         if ids.count > 1 { Button("Merge") { _ = store.merge(ids, separator: "\n") } }
         if ids.count == 1, let clip = clips.first {

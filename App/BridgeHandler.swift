@@ -161,7 +161,7 @@ enum BridgeHandler {
                 content = ClipContent(representations: [ClipRepresentation(type: UTI.png, data: data)])
             }
             #endif
-            let new = store.add(content, title: args["title"], source: source, pastebins: bins)
+            let new = store.add(content, title: args["title"], source: source, inHistory: bins.isEmpty, pastebins: bins)
             if let minutes = args["minutes-ago"].flatMap(Double.init) {
                 store.update(new.id) { $0.copiedAt = Date().addingTimeInterval(-minutes * 60); $0.createdAt = $0.copiedAt }
             }
@@ -233,6 +233,21 @@ enum BridgeHandler {
             guard !ids.isEmpty else { throw Bridge.Failure("No known clipping ids given.") }
             StackController.shared.add(ids)
             return ["ok": true, "stack_size": StackController.shared.items.count]
+
+        case "move-to-pastebin":
+            let ids = (args["ids"] ?? "").split(separator: ",").compactMap { UUID(uuidString: $0.trimmingCharacters(in: .whitespaces)) }
+                .filter { store.clip($0) != nil }
+            guard !ids.isEmpty else { throw Bridge.Failure("No known clipping ids given.") }
+            let target = args["pastebin-id"] ?? ""
+            if target.lowercased() == "history" {
+                for id in ids { for bin in store.clip(id)?.pastebinIDs ?? [] { store.remove([id], from: bin) } }
+            } else {
+                guard let bin = UUID(uuidString: target), store.library.pastebins.contains(where: { $0.id == bin }) else {
+                    throw Bridge.Failure("Pastebin not found: \(target)")
+                }
+                store.move(ids, to: bin)
+            }
+            return ["ok": true]
 
         case "pin-clipping":
             let c = try clip()

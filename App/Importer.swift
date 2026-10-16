@@ -114,14 +114,14 @@ enum Importer {
             binIDs[name] = id
             for uuid in uuids { membership[uuid, default: []].append(id) }
         }
-        let generalMembers = Set(result.pastebins.filter { ["General", "Clipboard", "History"].contains($0.name) }.flatMap(\.uuids))
         let existing = Set(store.library.clippings.map(\.contentHash))
         var added = 0
         for clip in result.clips {
             let hash = ClipBuilder.hash(clip.content)
             if existing.contains(hash) { continue }
             let bins = membership[clip.uuid] ?? []
-            let inHistory = bins.isEmpty || generalMembers.contains(clip.uuid) || generalMembers.isEmpty
+            // Each clipping lives in one place: a pastebin if it was saved in one, otherwise History.
+            let inHistory = bins.isEmpty
             store.add(clip.content, title: clip.title, source: (clip.sourceBundleID, clip.sourceName), createdAt: clip.createdAt,
                       copiedAt: clip.copiedAt, inHistory: inHistory, pastebins: bins)
             added += 1

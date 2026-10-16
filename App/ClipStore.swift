@@ -38,8 +38,16 @@ final class ClipStore {
     // MARK: Loading and saving
 
     private func load() {
-        if let data = try? Data(contentsOf: libraryFile), let loaded = try? SyncMerge.decode(Library.self, from: data) {
-            library = loaded
+        if let data = try? Data(contentsOf: libraryFile) {
+            do {
+                library = try SyncMerge.decode(Library.self, from: data)
+            } catch {
+                // Never write over a library that can't be read: keep it aside, so nothing is lost
+                // and the reason can be found, and start with an empty one.
+                let aside = folder.appendingPathComponent("library-unreadable-\(Int(Date().timeIntervalSince1970)).json")
+                try? FileManager.default.copyItem(at: libraryFile, to: aside)
+                NSLog("PasteLens: couldn't read library.json (\(error)); kept a copy at \(aside.path)")
+            }
         }
         if !library.seededDefaults {
             library.filters = DefaultContent.filters()
@@ -51,6 +59,7 @@ final class ClipStore {
         } else {
             addNewBuiltInFilters()
         }
+        moveSavedClippingsOutOfHistory()
     }
 
     /// Filters added to PasteLens in an update appear for existing users too, unless they deleted them.
@@ -246,12 +255,13 @@ final class ClipStore {
         changed(syncNow: sync)
     }
 
-    /// Moves a clipping to the top of history, as if just copied.
+    /// Moves a clipping to the top of its list, as if just copied. One kept in a pastebin
+    /// stays there rather than coming back into History.
     func touch(_ id: UUID) {
         guard Preferences.shared.moveToTop else { return }
         update(id) {
             $0.copiedAt = Date()
-            $0.inHistory = true
+            if $0.pastebinIDs.isEmpty { $0.inHistory = true }
         }
         library.clippings.sort { $0.copiedAt > $1.copiedAt }
     }
@@ -260,16 +270,46 @@ final class ClipStore {
         for id in ids { update(id) { $0.pinned = pinned } }
     }
 
-    func save(_ ids: [UUID], to pastebin: UUID) {
-        for id in ids { update(id) { if !$0.pastebinIDs.contains(pastebin) { $0.pastebinIDs.append(pastebin) } } }
+    /// Moves clippings into a pastebin. They leave History (and the pastebin they were
+    /// moved from), so each clipping lives in one place and clearing History never touches it.
+    func move(_ ids: [UUID], to pastebin: UUID, from scope: Scope? = nil) {
+        for id in ids {
+            update(id) {
+                if case .pastebin(let source) = scope, source != pastebin { $0.pastebinIDs.removeAll { $0 == source } }
+                if !$0.pastebinIDs.contains(pastebin) { $0.pastebinIDs.append(pastebin) }
+                $0.inHistory = false
+            }
+        }
         SoundPlayer.play(.save)
     }
 
+    /// Takes clippings out of a pastebin. One that isn't anywhere else goes back to History
+    /// rather than disappearing.
     func remove(_ ids: [UUID], from pastebin: UUID) {
         for id in ids {
-            update(id) { $0.pastebinIDs.removeAll { $0 == pastebin } }
-            if let clip = clip(id), !clip.inHistory, clip.pastebinIDs.isEmpty, !clip.pinned { delete([id]) }
+            update(id) {
+                $0.pastebinIDs.removeAll { $0 == pastebin }
+                if $0.pastebinIDs.isEmpty { $0.inHistory = true; $0.copiedAt = Date() }
+            }
         }
+        library.clippings.sort { $0.copiedAt > $1.copiedAt }
+        pruneHistory()
+    }
+
+    /// Before 1.0.6, saving into a pastebin left the clipping in History too. Takes those
+    /// copies out of History once, on each Mac.
+    private func moveSavedClippingsOutOfHistory() {
+        let key = "migrated.pastebinsOutOfHistory"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let now = Date()
+        var changed = false
+        for i in library.clippings.indices where library.clippings[i].inHistory && !library.clippings[i].pastebinIDs.isEmpty {
+            library.clippings[i].inHistory = false
+            library.clippings[i].updatedAt = now
+            changed = true
+        }
+        if changed { saveNow() }
     }
 
     /// Replaces a clipping's text, as when edited in the preview.

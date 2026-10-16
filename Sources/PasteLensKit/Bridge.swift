@@ -98,6 +98,10 @@ public enum Bridge {
         Command(name: "add-to-stack", summary: "Add clippings to the paste stack, to paste one after another.", parameters: [
             Parameter("ids", required: true, "Comma-separated clipping ids."),
         ], mutates: true),
+        Command(name: "move-to-pastebin", summary: "Move clippings into a pastebin. They leave History, so clearing History won't remove them.", parameters: [
+            Parameter("ids", required: true, "Comma-separated clipping ids."),
+            Parameter("pastebin-id", required: true, "Pastebin id (from get-pastebins), or \"history\" to move them back to History."),
+        ], mutates: true),
         Command(name: "pin-clipping", summary: "Pin or unpin a clipping so history limits never remove it.", parameters: [
             Parameter("id", required: true, "Clipping id."),
             Parameter("pinned", "boolean", "true to pin (default), false to unpin."),
