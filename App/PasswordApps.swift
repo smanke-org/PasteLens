@@ -12,7 +12,8 @@ enum PasswordApps {
         "com.apple.keychainaccess",         // Keychain Access
         "com.bitwarden.desktop",            // Bitwarden
         "com.dashlane.dashlanephonefinal",  // Dashlane
-        "com.lastpass.LastPass",            // LastPass
+        "com.lastpass.LastPass",            // LastPass (Mac App Store)
+        "com.lastpass.lastpassmacdesktop",  // LastPass (download from lastpass.com)
         "org.keepassxc.keepassxc",          // KeePassXC
         "com.hicknhacksoftware.MacPass",    // MacPass
         "com.markmcguill.strongbox.mac",    // Strongbox
