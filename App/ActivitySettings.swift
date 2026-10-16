@@ -90,6 +90,7 @@ struct ActivityMacList: View {
                 Text("Turn on sync to see your other Macs here.").font(.caption).foregroundStyle(.secondary)
             }
         }
+        .navigationTitle("Activity")
         .onAppear { if sync.enabled { sync.pull() } }
     }
 
@@ -199,6 +200,13 @@ struct ActivityGraph: View {
     var place: String?
     @State private var hovered: Date?
 
+    /// Debug copies taking screenshots ignore the pointer, wherever it happens to rest.
+    #if DEBUG
+    private static let hoverOff = ProcessInfo.processInfo.environment["PASTELENS_NO_HOVER"] != nil
+    #else
+    private static let hoverOff = false
+    #endif
+
     static let explanation = "The graphs widen as you use PasteLens: 7 days at first, then 30, 90 and 180 days, then a year. Pastes are the ones PasteLens makes, from Quick Paste, History, the menu, Stack, snippets, Shortcuts and the command line. Only the numbers are kept, never what you copied, and clearing History doesn't reset them."
 
     var body: some View {
@@ -269,7 +277,7 @@ struct ActivityGraph: View {
                 .accessibilityLabel(readout(segment.bar, range: range))
         }
         .chartXScale(domain: (bars.first?.start ?? Date())...(bars.last?.end ?? Date()))
-        .chartXSelection(value: $hovered)
+        .chartXSelection(value: Self.hoverOff ? .constant(nil) : $hovered)
         .chartYScale(domain: 0...max(peak, 4))
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { _ in
