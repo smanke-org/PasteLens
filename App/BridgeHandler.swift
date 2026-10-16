@@ -225,6 +225,27 @@ enum BridgeHandler {
                 window.setFrame(frame, display: true)
             }
             return ["ok": true]
+        case "debug-main-section":
+            // Where the History window's sidebar selection sits, as an index into its rows.
+            let state = MainWindow.shared.state
+            return ["index": MainWindow.shared.sidebarSections().firstIndex(of: state.section) ?? -1,
+                    "count": MainWindow.shared.sidebarSections().count,
+                    "firstResponder": NSApp.keyWindow?.firstResponder.map { String(describing: type(of: $0)) } ?? "none"]
+        case "debug-focus":
+            // Puts focus in the key window's first view of a kind (NSSearchField, NSTextView, NSTextField).
+            guard let window = NSApp.keyWindow, let root = window.contentView?.superview else { return ["ok": false] }
+            func find(_ view: NSView) -> NSView? {
+                if String(describing: type(of: view)) == args["class"] { return view }
+                for sub in view.subviews { if let hit = find(sub) { return hit } }
+                return nil
+            }
+            guard let view = find(root) else {
+                var kinds = Set<String>()
+                func collect(_ view: NSView) { kinds.insert(String(describing: type(of: view))); view.subviews.forEach(collect) }
+                collect(root)
+                return ["ok": false, "classes": kinds.filter { $0.contains("Text") || $0.contains("Search") }.sorted()]
+            }
+            return ["ok": window.makeFirstResponder(view)]
         case "debug-generate":
             // Adds made-up text clippings, for measuring how PasteLens copes with a big history.
             let count = Int(args["count"] ?? "") ?? 1000

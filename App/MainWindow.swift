@@ -31,9 +31,11 @@ final class MainWindow: NSObject, NSWindowDelegate {
             self.window = window
             // Clicking into another app closes the window, like a menu. Other PasteLens
             // windows (Settings, a sheet, an Open panel) don't count.
-            // ⌃1–⌃9 move the selected clippings to that pastebin.
+            // ⌃1–⌃9 move the selected clippings to that pastebin; Tab and Shift-Tab walk the sidebar.
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                MainActor.assumeIsolated { MainWindow.shared.handlePastebinKey(event) ? nil : event }
+                MainActor.assumeIsolated {
+                    MainWindow.shared.handlePastebinKey(event) || MainWindow.shared.handleSidebarTab(event) ? nil : event
+                }
             }
             resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification,
                                                                     object: nil, queue: .main) { _ in
@@ -57,6 +59,29 @@ final class MainWindow: NSObject, NSWindowDelegate {
         ClipStore.shared.move(Array(state.selection), to: bins[digit - 1].id, from: scope)
         state.selection = []
         return true
+    }
+
+    /// Tab selects the next sidebar item, Shift-Tab the previous one, wrapping at the ends.
+    /// While text is being edited (the search field, a rename, a snippet) Tab keeps its usual job.
+    private func handleSidebarTab(_ event: NSEvent) -> Bool {
+        guard let window, event.window === window, event.keyCode == 48,
+              event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+              !(window.firstResponder is NSText) else { return false }
+        let items = sidebarSections()
+        guard !items.isEmpty else { return false }
+        let step = event.modifierFlags.contains(.shift) ? -1 : 1
+        let current = items.firstIndex(of: state.section) ?? (step > 0 ? -1 : 0)
+        state.section = items[(current + step + items.count) % items.count]
+        return true
+    }
+
+    /// The sidebar's selectable rows, top to bottom (not the New Pastebin rows).
+    func sidebarSections() -> [MainState.Section] {
+        let library = ClipStore.shared.library
+        return [.clips(.history), .clips(.pinned)]
+            + library.pastebins.sorted { $0.order < $1.order }.map { .clips(.pastebin($0.id)) }
+            + library.smartPastebins.sorted { $0.order < $1.order }.map { .clips(.smart($0.id)) }
+            + [.snippets, .filters, .activity]
     }
 
     private func closeIfOpen() {
