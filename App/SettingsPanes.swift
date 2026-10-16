@@ -287,6 +287,8 @@ struct ShortcutSettings: View {
 
 struct PrivacySettings: View {
     @State private var prefs = Preferences.shared
+    @State private var sync = SyncEngine.shared
+    @State private var updater = AutoUpdater.shared
 
     var aiStatus: String {
         switch SystemLanguageModel.default.availability {
@@ -300,6 +302,23 @@ struct PrivacySettings: View {
 
     var body: some View {
         Form {
+            Section("Your clippings") {
+                PrivacyPoint("desktopcomputer", "Clippings are stored on this Mac. Text recognition, secret detection and Apple Intelligence filters all run here too.")
+                PrivacyPoint("key.slash", "Items that password managers mark as concealed or temporary are never recorded, and you can ignore any other app in History.")
+                PrivacyPoint("terminal", "The pastelens command and MCP server talk to PasteLens only on this Mac. If you connect an AI assistant to the MCP server, clippings it reads are shared with that assistant.")
+            }
+            Section("iCloud") {
+                PrivacyPoint("icloud", sync.enabled
+                    ? "Sync is on. Your clippings, pastebins, snippets, filters, settings and activity counts go to your private iCloud database. Secrets never sync."
+                    : "Sync is off, so nothing leaves this Mac. If you turn it on, your clippings, pastebins, snippets, filters, settings and activity counts go to your private iCloud database. Secrets never sync.")
+                PrivacyPoint("lock", "Everything is encrypted on this Mac with AES-256-GCM before it's uploaded, using a key only your sync passphrase unlocks. Neither Apple nor the developer can read it.")
+            }
+            Section("The developer") {
+                PrivacyPoint("person.crop.circle.badge.xmark", "PasteLens has no account, ads, analytics or tracking. No information about you, your clippings or how you use PasteLens is ever sent to the developer.")
+                PrivacyPoint("arrow.down.circle", updater.policy == .off
+                    ? "Automatic update checks are off, so PasteLens contacts GitHub only when you choose Check Now."
+                    : "PasteLens checks GitHub for updates. Like any website, GitHub sees your IP address. You can turn update checks off in General.")
+            }
             Section {
                 Toggle("Detect secrets", isOn: $prefs.detectSensitive)
                 if prefs.detectSensitive {
@@ -322,6 +341,25 @@ struct PrivacySettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// One statement in the Privacy pane, with a symbol beside it.
+struct PrivacyPoint: View {
+    let symbol: String
+    let text: String
+
+    init(_ symbol: String, _ text: String) {
+        self.symbol = symbol
+        self.text = text
+    }
+
+    var body: some View {
+        Label {
+            Text(text).fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(.secondary)
+        }
     }
 }
 
