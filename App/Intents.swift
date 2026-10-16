@@ -72,7 +72,7 @@ struct ClippingQuery: EntityStringQuery {
         await MainActor.run { ClipStore.shared.clippings(in: .history, query: string).prefix(30).map(ClippingEntity.init) }
     }
     func suggestedEntities() async throws -> [ClippingEntity] {
-        await MainActor.run { ClipStore.shared.history.prefix(20).map(ClippingEntity.init) }
+        await MainActor.run { ClipStore.shared.recent(20).map(ClippingEntity.init) }
     }
 }
 
@@ -87,7 +87,7 @@ struct GetClippingsIntent: AppIntent {
 
     @MainActor func perform() async throws -> some IntentResult & ReturnsValue<[ClippingEntity]> {
         let scope = ClipStore.Scope(id: pastebin?.id) ?? .history
-        return .result(value: ClipStore.shared.clippings(in: scope, query: query ?? "").prefix(limit).map(ClippingEntity.init))
+        return .result(value: ClipStore.shared.clippings(in: scope, query: query ?? "", limit: limit).map(ClippingEntity.init))
     }
 }
 
@@ -100,7 +100,7 @@ struct GetClippingByIndexIntent: AppIntent {
     static var parameterSummary: some ParameterSummary { Summary("Get clipping \(\.$position) from \(\.$pastebin)") }
 
     @MainActor func perform() async throws -> some IntentResult & ReturnsValue<ClippingEntity> {
-        let items = ClipStore.shared.clippings(in: ClipStore.Scope(id: pastebin?.id) ?? .history)
+        let items = ClipStore.shared.clippings(in: ClipStore.Scope(id: pastebin?.id) ?? .history, limit: position)
         guard items.indices.contains(position - 1) else { throw Bridge.Failure("There's no clipping at position \(position).") }
         return .result(value: ClippingEntity(items[position - 1]))
     }

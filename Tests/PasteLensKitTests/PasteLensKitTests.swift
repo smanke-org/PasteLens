@@ -380,3 +380,58 @@ import Testing
         #expect(throws: Bridge.Failure.self) { try Bridge.call("fail", args: [:]) }
     }
 }
+
+@Suite struct DatabaseTests {
+    func db() throws -> ClipDatabase {
+        try ClipDatabase(url: FileManager.default.temporaryDirectory.appendingPathComponent("pl-db-\(UUID().uuidString).sqlite"))
+    }
+
+    func clip(_ text: String, ago: TimeInterval = 0) -> Clipping {
+        ClipBuilder.make(from: .text(text), source: ("com.apple.Notes", "Notes"), origin: "A", now: Date().addingTimeInterval(-ago))
+    }
+
+    @Test func storeAndPage() throws {
+        let db = try db()
+        let clips = (0..<30).map { clip("item number \($0)", ago: Double($0)) }
+        try db.upsert(clips)
+        #expect(db.count(.history) == 30)
+        #expect(db.page(.history, limit: 5).map(\.previewText) == (0..<5).map { "item number \($0)" })
+        #expect(db.page(.history, limit: 5, offset: 28).count == 2)
+        var moved = clips[3]
+        let bin = UUID()
+        moved.inHistory = false
+        moved.pastebinIDs = [bin]
+        try db.upsert(moved)
+        #expect(db.count(.history) == 29)
+        #expect(db.page(.pastebin(bin), limit: 10).map(\.id) == [moved.id])
+        try db.delete([moved.id])
+        #expect(db.count(.pastebin(bin)) == 0)
+        #expect(db.clip(clips[0].id)?.previewText == "item number 0")
+    }
+
+    @Test func search() throws {
+        let db = try db()
+        try db.upsert([clip("Invoice 4471 due Friday"), clip("Meeting notes for the launch"), clip("grocery list: apples")])
+        #expect(db.search("voic", in: .history, limit: 10).map(\.previewText) == ["Invoice 4471 due Friday"])
+        #expect(db.search("invoce frday", in: .history, limit: 10).first?.previewText == "Invoice 4471 due Friday")
+        #expect(db.search("launch meeting", in: .history, limit: 10).first?.previewText == "Meeting notes for the launch")
+        #expect(db.search("zzqq", in: .history, limit: 10).isEmpty)
+        var secret = clip("sk-test-abcdef1234567890")
+        secret.sensitive = true
+        secret.title = "API key or token"
+        try db.upsert(secret)
+        #expect(db.search("abcdef", in: .history, limit: 10).isEmpty)
+    }
+
+    @Test func retentionAndHashes() throws {
+        let db = try db()
+        var clips = (0..<10).map { clip("c\($0)", ago: Double($0) * 86_400) }
+        clips[9].pinned = true
+        try db.upsert(clips)
+        #expect(Set(db.expired(keeping: 5, maxDays: 0)) == Set(clips[5...8].map(\.id)))
+        #expect(Set(db.expired(keeping: 0, maxDays: 3)) == Set(clips[3...8].map(\.id)))
+        #expect(db.historyClip(withHash: clips[2].contentHash)?.id == clips[2].id)
+        try db.set(Data("x".utf8), forKey: "k")
+        #expect(db.data(forKey: "k") == Data("x".utf8))
+    }
+}

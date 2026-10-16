@@ -3,18 +3,22 @@ import IOKit
 import Observation
 import PasteLensKit
 
-/// The library on disk and in memory: clipping metadata in library.json, each clipping's
-/// bytes in its own file under Content/.
+/// The library: clipping metadata in an SQLite database (PasteLens.sqlite), each clipping's
+/// bytes in its own file under Content/, and the small things (pastebins, smart pastebins,
+/// filters, snippets) kept in memory and saved in the database's key-value table.
 @Observable
 @MainActor
 final class ClipStore {
     static let shared = ClipStore()
 
+    /// Pastebins, smart pastebins, filters, snippets and per-Mac shortcuts. Clippings are
+    /// not kept here any more; they're read from the database a page at a time.
     private(set) var library = Library()
-    /// Bumped on every change, so views can cheaply notice one.
+    /// Bumped on every change, so views know to read again.
     private(set) var revision = 0
 
     @ObservationIgnored let folder: URL
+    @ObservationIgnored private(set) var db: ClipDatabase!
     @ObservationIgnored private var contentCache: [UUID: ClipContent] = [:]
     @ObservationIgnored private var cacheOrder: [UUID] = []
     @ObservationIgnored private var saveScheduled = false
@@ -29,25 +33,30 @@ final class ClipStore {
                 .appendingPathComponent("PasteLens", isDirectory: true)
         }
         try? FileManager.default.createDirectory(at: contentFolder, withIntermediateDirectories: true)
+        do {
+            db = try ClipDatabase(url: folder.appendingPathComponent("PasteLens.sqlite"))
+        } catch {
+            // Without its database PasteLens can't keep anything; say so rather than lose data.
+            let alert = NSAlert()
+            alert.messageText = "PasteLens Can't Open Its Library"
+            alert.informativeText = "\(error.localizedDescription)\n\nNothing has been changed. The library is in \(folder.path)."
+            alert.runModal()
+            exit(1)
+        }
         load()
     }
 
     var contentFolder: URL { folder.appendingPathComponent("Content", isDirectory: true) }
-    private var libraryFile: URL { folder.appendingPathComponent("library.json") }
+    private var legacyLibraryFile: URL { folder.appendingPathComponent("library.json") }
+    private static let libraryKey = "library"
 
     // MARK: Loading and saving
 
     private func load() {
-        if let data = try? Data(contentsOf: libraryFile) {
-            do {
-                library = try SyncMerge.decode(Library.self, from: data)
-            } catch {
-                // Never write over a library that can't be read: keep it aside, so nothing is lost
-                // and the reason can be found, and start with an empty one.
-                let aside = folder.appendingPathComponent("library-unreadable-\(Int(Date().timeIntervalSince1970)).json")
-                try? FileManager.default.copyItem(at: libraryFile, to: aside)
-                NSLog("PasteLens: couldn't read library.json (\(error)); kept a copy at \(aside.path)")
-            }
+        if let data = db.data(forKey: Self.libraryKey) {
+            if let loaded = try? SyncMerge.decode(Library.self, from: data) { library = loaded }
+        } else if FileManager.default.fileExists(atPath: legacyLibraryFile.path) {
+            importLegacyLibrary()
         }
         if !library.seededDefaults {
             library.filters = DefaultContent.filters()
@@ -59,16 +68,42 @@ final class ClipStore {
         } else {
             addNewBuiltInFilters()
         }
-        moveSavedClippingsOutOfHistory()
+    }
+
+    /// 1.0.x kept everything in library.json. Moves it into the database once, and keeps the
+    /// old file (renamed) in case it's ever needed.
+    private func importLegacyLibrary() {
+        do {
+            let data = try Data(contentsOf: legacyLibraryFile)
+            var old = try SyncMerge.decode(Library.self, from: data)
+            // Before 1.0.6, a clipping saved in a pastebin also stayed in History.
+            for i in old.clippings.indices where !old.clippings[i].pastebinIDs.isEmpty { old.clippings[i].inHistory = false }
+            try db.upsert(old.clippings)
+            try db.transaction {
+                for (key, date) in old.tombstones { try db.setTombstone(key, at: date) }
+            }
+            let clippings = old.clippings
+            old.clippings = []
+            old.tombstones = [:]
+            library = old
+            saveNow()
+            let done = folder.appendingPathComponent("library-before-database.json")
+            try? FileManager.default.removeItem(at: done)
+            try FileManager.default.moveItem(at: legacyLibraryFile, to: done)
+            NSLog("PasteLens: moved \(clippings.count) clippings from library.json into the database")
+        } catch {
+            let aside = folder.appendingPathComponent("library-unreadable-\(Int(Date().timeIntervalSince1970)).json")
+            try? FileManager.default.copyItem(at: legacyLibraryFile, to: aside)
+            NSLog("PasteLens: couldn't read library.json (\(error)); kept a copy at \(aside.path)")
+        }
     }
 
     /// Filters added to PasteLens in an update appear for existing users too, unless they deleted them.
     private func addNewBuiltInFilters() {
         let have = Set(library.filters.compactMap(\.builtInKey))
-        let deleted = Set(library.tombstones.keys)
         var added = false
         for filter in DefaultContent.filters() where !have.contains(filter.builtInKey!) {
-            if deleted.contains("builtin:\(filter.builtInKey!)") { continue }
+            if db.tombstone("builtin:\(filter.builtInKey!)") != nil { continue }
             library.filters.append(filter)
             added = true
         }
@@ -77,27 +112,30 @@ final class ClipStore {
 
     func saveNow() {
         do {
-            let data = try SyncMerge.encode(library)
-            try data.write(to: libraryFile, options: .atomic)
+            var meta = library
+            meta.clippings = []
+            meta.tombstones = [:]
+            try db.set(SyncMerge.encode(meta), forKey: Self.libraryKey)
         } catch {
             NSLog("PasteLens: couldn't save the library: \(error.localizedDescription)")
         }
     }
 
-    /// Records a change: saves soon, tells sync, and refreshes views.
-    func changed(syncNow: Bool = true) {
+    /// Records a change to pastebins, filters or snippets: saves soon and refreshes views.
+    private func metaChanged() {
         revision += 1
-        if !saveScheduled {
-            saveScheduled = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.saveScheduled = false
-                    self?.saveNow()
-                }
+        guard !saveScheduled else { return }
+        saveScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.saveScheduled = false
+                self?.saveNow()
             }
         }
-        if syncNow { SyncEngine.shared.libraryChanged() }
     }
+
+    /// Refreshes views after clippings changed in the database.
+    func clippingsChanged() { revision += 1 }
 
     // MARK: Content
 
@@ -131,34 +169,49 @@ final class ClipStore {
 
     // MARK: Lookup
 
-    func clip(_ id: UUID) -> Clipping? { library.clippings.first { $0.id == id } }
+    func clip(_ id: UUID) -> Clipping? { db.clip(id) }
 
-    private func index(_ id: UUID) -> Int? { library.clippings.firstIndex { $0.id == id } }
+    /// The most recent History clippings.
+    func recent(_ limit: Int) -> [Clipping] { db.page(.history, limit: limit) }
 
-    var history: [Clipping] { library.clippings.filter(\.inHistory) }
-
-    func clippings(in scope: Scope, query: String = "") -> [Clipping] {
-        var items: [Clipping]
+    func count(_ scope: Scope) -> Int? {
         switch scope {
-        case .history: items = library.clippings.filter(\.inHistory)
-        case .pinned: items = library.clippings.filter(\.pinned)
-        case .pastebin(let id): items = library.clippings.filter { $0.pastebinIDs.contains(id) }
+        case .history: db.count(.history)
+        case .pinned: db.count(.pinned)
+        case .all: db.totalCount
+        case .pastebin(let id): db.count(.pastebin(id))
+        case .smart: nil
+        }
+    }
+
+    /// A page of clippings in a scope, newest first, or best match first when searching.
+    func clippings(in scope: Scope, query: String = "", limit: Int = 200, offset: Int = 0) -> [Clipping] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        let filter: ClipDatabase.Filter
+        switch scope {
+        case .history: filter = .history
+        case .pinned: filter = .pinned
+        case .all: filter = .all
+        case .pastebin(let id): filter = .pastebin(id)
         case .smart(let id):
+            // Smart pastebin rules run in Swift, over clippings read newest first in batches.
             guard let smart = library.smartPastebins.first(where: { $0.id == id }) else { return [] }
             let now = Date()
-            items = library.clippings.filter { smart.matches($0, now: now) }
-        case .all: items = library.clippings
+            var matches: [Clipping] = []
+            let want = trimmed.isEmpty ? offset + limit : 2_000
+            db.forEach(.all) { clip in
+                if smart.matches(clip, now: now) { matches.append(clip) }
+                return matches.count < want
+            }
+            guard !trimmed.isEmpty else { return Array(matches.dropFirst(offset).prefix(limit)) }
+            return matches.compactMap { clip -> (Clipping, Double)? in
+                FuzzySearch.score(trimmed, in: clip.sensitive ? (clip.title ?? "") : clip.searchableText).map { (clip, $0) }
+            }
+            .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.copiedAt > $1.0.copiedAt }
+            .dropFirst(offset).prefix(limit).map(\.0)
         }
-        items.sort { $0.copiedAt > $1.copiedAt }
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return items }
-        return items.compactMap { clip -> (Clipping, Double)? in
-            guard let score = FuzzySearch.score(trimmed, in: clip.sensitive ? (clip.title ?? "") : clip.searchableText) else { return nil }
-            return (clip, score)
-        }
-        // Better matches first; among equals, the most recent.
-        .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.copiedAt > $1.0.copiedAt }
-        .map(\.0)
+        if trimmed.isEmpty { return db.page(filter, limit: limit, offset: offset) }
+        return Array(db.search(trimmed, in: filter, limit: offset + limit).dropFirst(offset))
     }
 
     enum Scope: Hashable {
@@ -179,23 +232,27 @@ final class ClipStore {
         }
     }
 
-    // MARK: Recording
+    // MARK: Writing clippings
 
-    /// Adds what was just copied, or moves an identical history item back to the top.
+    /// Saves clippings and queues them for sync.
+    private func write(_ clips: [Clipping], sync: Bool = true) {
+        do { try db.upsert(clips) } catch { NSLog("PasteLens: couldn't save clippings: \(error.localizedDescription)") }
+        if sync { for clip in clips { SyncEngine.shared.mark(.clipping, clip.id.uuidString) } }
+        clippingsChanged()
+    }
+
+    /// Adds what was just copied, or moves an identical History item back to the top.
     @discardableResult
     func record(_ content: ClipContent, source: (bundleID: String?, name: String?), imageSize: (Int, Int)?,
                 sensitive: SensitiveScanner.Finding?) -> Clipping {
         let now = Date()
         let hash = ClipBuilder.hash(content)
-        if let i = library.clippings.firstIndex(where: { $0.inHistory && $0.contentHash == hash }) {
-            library.clippings[i].copiedAt = now
-            library.clippings[i].updatedAt = now
-            if let name = source.name { library.clippings[i].sourceName = name; library.clippings[i].sourceBundleID = source.bundleID }
-            let clip = library.clippings[i]
-            library.clippings.remove(at: i)
-            library.clippings.insert(clip, at: 0)
-            changed()
-            return clip
+        if var existing = db.historyClip(withHash: hash) {
+            existing.copiedAt = now
+            existing.updatedAt = now
+            if let name = source.name { existing.sourceName = name; existing.sourceBundleID = source.bundleID }
+            write([existing], sync: !existing.sensitive)
+            return existing
         }
         var clip = ClipBuilder.make(from: content, source: source, origin: DeviceIdentity.id, imageSize: imageSize, now: now)
         if let sensitive {
@@ -204,10 +261,8 @@ final class ClipStore {
             clip.expiresAt = now.addingTimeInterval(Double(max(Preferences.shared.sensitiveMinutes, 1)) * 60)
         }
         storeContent(content, for: clip.id)
-        library.clippings.insert(clip, at: 0)
+        write([clip], sync: !clip.sensitive)
         pruneHistory()
-        changed()
-        if !clip.sensitive { SyncEngine.shared.contentAdded(clip.id) }
         if clip.kind == .image, Preferences.shared.ocr { recognizeText(in: clip.id) }
         return clip
     }
@@ -223,13 +278,29 @@ final class ClipStore {
         clip.inHistory = inHistory
         clip.pastebinIDs = pastebins
         storeContent(content, for: clip.id)
-        library.clippings.append(clip)
-        library.clippings.sort { $0.copiedAt > $1.copiedAt }
-        changed()
-        SyncEngine.shared.contentAdded(clip.id)
+        write([clip])
         if clip.kind == .image, Preferences.shared.ocr { recognizeText(in: clip.id) }
         return clip
     }
+
+    /// Adds many at once, in one transaction (imports).
+    func addMany(_ items: [(ClipContent, Clipping)]) {
+        for (content, clip) in items { storeContent(content, for: clip.id) }
+        write(items.map(\.1))
+    }
+
+    #if DEBUG
+    /// Writes test clippings without touching sync or the content cache.
+    func addQuietly(_ items: [(ClipContent, Clipping)]) {
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        for (content, clip) in items {
+            if let data = try? encoder.encode(content) { try? data.write(to: contentURL(clip.id)) }
+        }
+        try? db.upsert(items.map(\.1))
+        clippingsChanged()
+    }
+    #endif
 
     static func imageSize(_ content: ClipContent) -> (Int, Int)? {
         for type in UTI.imageTypes {
@@ -246,13 +317,11 @@ final class ClipStore {
         }
     }
 
-    // MARK: Editing
-
     func update(_ id: UUID, sync: Bool = true, _ change: (inout Clipping) -> Void) {
-        guard let i = index(id) else { return }
-        change(&library.clippings[i])
-        library.clippings[i].updatedAt = Date()
-        changed(syncNow: sync)
+        guard var clip = db.clip(id) else { return }
+        change(&clip)
+        clip.updatedAt = Date()
+        write([clip], sync: sync && !clip.sensitive)
     }
 
     /// Moves a clipping to the top of its list, as if just copied. One kept in a pastebin
@@ -263,7 +332,6 @@ final class ClipStore {
             $0.copiedAt = Date()
             if $0.pastebinIDs.isEmpty { $0.inHistory = true }
         }
-        library.clippings.sort { $0.copiedAt > $1.copiedAt }
     }
 
     func setPinned(_ ids: [UUID], _ pinned: Bool) {
@@ -292,24 +360,7 @@ final class ClipStore {
                 if $0.pastebinIDs.isEmpty { $0.inHistory = true; $0.copiedAt = Date() }
             }
         }
-        library.clippings.sort { $0.copiedAt > $1.copiedAt }
         pruneHistory()
-    }
-
-    /// Before 1.0.6, saving into a pastebin left the clipping in History too. Takes those
-    /// copies out of History once, on each Mac.
-    private func moveSavedClippingsOutOfHistory() {
-        let key = "migrated.pastebinsOutOfHistory"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        UserDefaults.standard.set(true, forKey: key)
-        let now = Date()
-        var changed = false
-        for i in library.clippings.indices where library.clippings[i].inHistory && !library.clippings[i].pastebinIDs.isEmpty {
-            library.clippings[i].inHistory = false
-            library.clippings[i].updatedAt = now
-            changed = true
-        }
-        if changed { saveNow() }
     }
 
     /// Replaces a clipping's text, as when edited in the preview.
@@ -326,54 +377,59 @@ final class ClipStore {
             $0.sizeBytes = fresh.sizeBytes
             $0.contentHash = fresh.contentHash
         }
-        SyncEngine.shared.contentAdded(id, replace: true)
     }
 
-    func delete(_ ids: [UUID]) {
+    func delete(_ ids: [UUID], sound: Bool = true) {
         guard !ids.isEmpty else { return }
-        let set = Set(ids)
         let now = Date()
-        library.clippings.removeAll { set.contains($0.id) }
+        let secrets = Set(db.clips(ids).filter(\.sensitive).map(\.id))
+        try? db.delete(ids)
+        try? db.transaction {
+            for id in ids where !secrets.contains(id) { try db.setTombstone("clipping:\(id.uuidString)", at: now) }
+        }
+        var hotKeysChanged = false
         for id in ids {
-            library.tombstones["clipping:\(id.uuidString)"] = now
-            library.clipHotKeys[id] = nil
             try? FileManager.default.removeItem(at: contentURL(id))
             contentCache[id] = nil
+            if library.clipHotKeys.removeValue(forKey: id) != nil { hotKeysChanged = true }
+            // Secrets never left this Mac, so there's nothing to tell the others.
+            if !secrets.contains(id) { SyncEngine.shared.mark(.clipping, id.uuidString) }
         }
+        if hotKeysChanged { metaChanged() }
         StackController.shared.remove(ids)
-        changed()
-        SyncEngine.shared.contentDeleted(ids)
-        SoundPlayer.play(.delete)
+        clippingsChanged()
+        if sound { SoundPlayer.play(.delete) }
     }
 
-    /// Clears history. Pinned clippings and ones saved in a pastebin stay where they are.
+    /// Clears History. Pinned clippings stay (pinned), and clippings in pastebins aren't in History.
     func clearHistory() {
-        let drop = library.clippings.filter { $0.inHistory && !$0.isKept }.map(\.id)
-        for i in library.clippings.indices where library.clippings[i].inHistory {
-            library.clippings[i].inHistory = false
-            library.clippings[i].updatedAt = Date()
+        var drop: [UUID] = []
+        var unpinFromHistory: [Clipping] = []
+        for clip in db.page(.history, limit: Int.max) {
+            if clip.isKept {
+                var c = clip
+                c.inHistory = false
+                c.updatedAt = Date()
+                unpinFromHistory.append(c)
+            } else {
+                drop.append(clip.id)
+            }
         }
+        if !unpinFromHistory.isEmpty { write(unpinFromHistory) }
         delete(drop)
     }
 
     /// Applies the history limits and deletes expired secrets.
     func pruneHistory() {
-        let now = Date()
-        let expiredSecrets = library.clippings.filter { $0.sensitive && ($0.expiresAt ?? .distantFuture) < now }.map(\.id)
-        var drop = Preferences.shared.retention.expired(in: library.clippings, now: now)
-        // A clipping that's also in a pastebin only leaves history.
-        let kept = Set(library.clippings.filter { !$0.pastebinIDs.isEmpty }.map(\.id))
-        for id in drop where kept.contains(id) {
-            if let i = index(id) { library.clippings[i].inHistory = false; library.clippings[i].updatedAt = now }
-        }
-        drop.removeAll { kept.contains($0) }
-        if !expiredSecrets.isEmpty || !drop.isEmpty { delete(Array(Set(drop + expiredSecrets))) }
+        let retention = Preferences.shared.retention
+        let drop = db.expired(keeping: retention.maxClippings, maxDays: retention.maxDays) + db.expiredSecrets()
+        if !drop.isEmpty { delete(Array(Set(drop)), sound: false) }
     }
 
     /// Joins several clippings' text into a new clipping.
     @discardableResult
     func merge(_ ids: [UUID], separator: String) -> Clipping? {
-        let ordered = ids.compactMap(clip).sorted { $0.copiedAt < $1.copiedAt }
+        let ordered = db.clips(ids).sorted { $0.copiedAt < $1.copiedAt }
         let texts = ordered.compactMap { text(of: $0.id) ?? ($0.previewText.isEmpty ? nil : $0.previewText) }
         guard !texts.isEmpty else { return nil }
         return add(.text(texts.joined(separator: separator)), title: nil, source: (Bundle.main.bundleIdentifier, "PasteLens"))
@@ -381,7 +437,7 @@ final class ClipStore {
 
     func setHotKey(_ key: StoredHotKey?, forClip id: UUID) {
         library.clipHotKeys[id] = key
-        changed(syncNow: false)
+        metaChanged()
         HotKeyCenter.shared.apply()
     }
 
@@ -394,16 +450,17 @@ final class ClipStore {
             bin.order = (library.pastebins.map(\.order).max() ?? 0) + 1
             library.pastebins.append(bin)
         }
-        changed()
+        metaChanged()
+        SyncEngine.shared.mark(.pastebin, bin.id.uuidString)
         HotKeyCenter.shared.apply()
     }
 
     func deletePastebin(_ id: UUID) {
         library.pastebins.removeAll { $0.id == id }
-        library.tombstones["pastebin:\(id.uuidString)"] = Date()
-        let orphans = library.clippings.filter { $0.pastebinIDs.contains(id) }.map(\.id)
-        for clip in orphans { remove([clip], from: id) }
-        changed()
+        try? db.setTombstone("pastebin:\(id.uuidString)", at: Date())
+        remove(db.ids(.pastebin(id)), from: id)
+        metaChanged()
+        SyncEngine.shared.mark(.pastebin, id.uuidString)
         HotKeyCenter.shared.apply()
     }
 
@@ -414,54 +471,64 @@ final class ClipStore {
             bin.order = (library.smartPastebins.map(\.order).max() ?? 0) + 1
             library.smartPastebins.append(bin)
         }
-        changed()
+        metaChanged()
+        SyncEngine.shared.mark(.smartPastebin, bin.id.uuidString)
     }
 
     func deleteSmart(_ id: UUID) {
         library.smartPastebins.removeAll { $0.id == id }
-        library.tombstones["smartPastebin:\(id.uuidString)"] = Date()
-        changed()
+        try? db.setTombstone("smartPastebin:\(id.uuidString)", at: Date())
+        metaChanged()
+        SyncEngine.shared.mark(.smartPastebin, id.uuidString)
     }
 
     func upsertFilter(_ filter: Filter) {
         var filter = filter
         filter.updatedAt = Date()
         if let i = library.filters.firstIndex(where: { $0.id == filter.id }) { library.filters[i] = filter } else { library.filters.append(filter) }
-        changed()
+        metaChanged()
+        SyncEngine.shared.mark(.filter, filter.id.uuidString)
         HotKeyCenter.shared.apply()
     }
 
     func deleteFilter(_ id: UUID) {
         let key = library.filters.first { $0.id == id }?.builtInKey
         library.filters.removeAll { $0.id == id }
-        library.tombstones["filter:\(id.uuidString)"] = Date()
+        try? db.setTombstone("filter:\(id.uuidString)", at: Date())
         // Remember deleted built-ins so an update doesn't bring them back.
-        if let key { library.tombstones["builtin:\(key)"] = Date() }
-        changed()
+        if let key { try? db.setTombstone("builtin:\(key)", at: Date()) }
+        metaChanged()
+        SyncEngine.shared.mark(.filter, id.uuidString)
         HotKeyCenter.shared.apply()
     }
 
     func restoreDefaultFilters() {
         let have = Set(library.filters.compactMap(\.builtInKey))
         for filter in DefaultContent.filters() where !have.contains(filter.builtInKey!) {
-            library.tombstones["builtin:\(filter.builtInKey!)"] = nil
-            library.filters.append(filter)
+            try? db.setTombstone("builtin:\(filter.builtInKey!)", at: nil)
+            try? db.setTombstone("filter:\(filter.id.uuidString)", at: nil)
+            var restored = filter
+            restored.updatedAt = Date()
+            library.filters.append(restored)
+            SyncEngine.shared.mark(.filter, restored.id.uuidString)
         }
-        changed()
+        metaChanged()
     }
 
     func upsertSnippet(_ snippet: Snippet) {
         var snippet = snippet
         snippet.updatedAt = Date()
         if let i = library.snippets.firstIndex(where: { $0.id == snippet.id }) { library.snippets[i] = snippet } else { library.snippets.append(snippet) }
-        changed()
+        metaChanged()
+        SyncEngine.shared.mark(.snippet, snippet.id.uuidString)
         SnippetExpander.shared.refresh()
     }
 
     func deleteSnippet(_ id: UUID) {
         library.snippets.removeAll { $0.id == id }
-        library.tombstones["snippet:\(id.uuidString)"] = Date()
-        changed()
+        try? db.setTombstone("snippet:\(id.uuidString)", at: Date())
+        metaChanged()
+        SyncEngine.shared.mark(.snippet, id.uuidString)
         SnippetExpander.shared.refresh()
     }
 
@@ -472,19 +539,119 @@ final class ClipStore {
 
     // MARK: Sync
 
-    /// Replaces the library with a merged one from SyncEngine.
-    func applyMerged(_ merged: Library, removed: [UUID]) {
-        let previousIDs = Set(library.clippings.map(\.id))
-        library = merged
-        for id in removed {
-            try? FileManager.default.removeItem(at: contentURL(id))
-            contentCache[id] = nil
+    /// The local version of a record, as sync sees it: its payload (nil when deleted or
+    /// missing) and when it last changed (a tombstone's date for deletions).
+    func localRecord(_ kind: SyncRecord.Kind, _ id: String) -> SyncRecord? {
+        let key = "\(kind.rawValue):\(id)"
+        if let date = db.tombstone(key) { return SyncRecord(kind: kind, id: id, updatedAt: date, deleted: true) }
+        guard let uuid = UUID(uuidString: id) else { return nil }
+        switch kind {
+        case .clipping:
+            guard let clip = db.clip(uuid), !clip.sensitive else { return nil }
+            return SyncRecord(kind: kind, id: id, updatedAt: clip.updatedAt, payload: try? SyncMerge.encode(clip))
+        case .pastebin:
+            return library.pastebins.first { $0.id == uuid }.map { SyncRecord(kind: kind, id: id, updatedAt: $0.updatedAt, payload: try? SyncMerge.encode($0)) }
+        case .smartPastebin:
+            return library.smartPastebins.first { $0.id == uuid }.map { SyncRecord(kind: kind, id: id, updatedAt: $0.updatedAt, payload: try? SyncMerge.encode($0)) }
+        case .filter:
+            return library.filters.first { $0.id == uuid }.map { SyncRecord(kind: kind, id: id, updatedAt: $0.updatedAt, payload: try? SyncMerge.encode($0)) }
+        case .snippet:
+            return library.snippets.first { $0.id == uuid }.map { SyncRecord(kind: kind, id: id, updatedAt: $0.updatedAt, payload: try? SyncMerge.encode($0)) }
+        case .setting:
+            return nil
         }
-        let added = merged.clippings.filter { !previousIDs.contains($0.id) }
-        changed(syncNow: false)
+    }
+
+    /// Every record this Mac would publish, for the first upload.
+    func allRecordKeys() -> [(SyncRecord.Kind, String)] {
+        var keys: [(SyncRecord.Kind, String)] = db.ids(.all).map { (.clipping, $0.uuidString) }
+        keys += library.pastebins.map { (.pastebin, $0.id.uuidString) }
+        keys += library.smartPastebins.map { (.smartPastebin, $0.id.uuidString) }
+        keys += library.filters.map { (.filter, $0.id.uuidString) }
+        keys += library.snippets.map { (.snippet, $0.id.uuidString) }
+        for key in db.tombstoneKeys() {
+            let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2, let kind = SyncRecord.Kind(rawValue: parts[0]), kind != .setting { keys.append((kind, parts[1])) }
+        }
+        return keys
+    }
+
+    /// Applies a record from another Mac if it's newer than what's here. Returns the id of a
+    /// clipping whose content should be fetched.
+    @discardableResult
+    func applyRemote(_ record: SyncRecord) -> UUID? {
+        if let local = localRecord(record.kind, record.id) {
+            if record.updatedAt < local.updatedAt { return nil }
+            if record.updatedAt == local.updatedAt && (local.deleted || !record.deleted) { return nil }
+        }
+        let key = record.key
+        if record.deleted {
+            try? db.setTombstone(key, at: record.updatedAt)
+            guard let uuid = UUID(uuidString: record.id) else { return nil }
+            switch record.kind {
+            case .clipping:
+                try? db.delete([uuid])
+                try? FileManager.default.removeItem(at: contentURL(uuid))
+                contentCache[uuid] = nil
+                StackController.shared.remove([uuid])
+                clippingsChanged()
+            case .pastebin: library.pastebins.removeAll { $0.id == uuid }; metaChanged()
+            case .smartPastebin: library.smartPastebins.removeAll { $0.id == uuid }; metaChanged()
+            case .filter: library.filters.removeAll { $0.id == uuid }; metaChanged()
+            case .snippet: library.snippets.removeAll { $0.id == uuid }; metaChanged()
+            case .setting: break
+            }
+            return nil
+        }
+        guard let payload = record.payload else { return nil }
+        try? db.setTombstone(key, at: nil)
+        switch record.kind {
+        case .clipping:
+            guard var clip = try? SyncMerge.decode(Clipping.self, from: payload) else { return nil }
+            clip.sensitive = false
+            // The same thing copied on two Macs: keep the older record everywhere.
+            if clip.inHistory, let twin = db.historyClip(withHash: clip.contentHash), twin.id != clip.id {
+                if clip.createdAt < twin.createdAt || (clip.createdAt == twin.createdAt && clip.id.uuidString < twin.id.uuidString) {
+                    clip.copiedAt = max(clip.copiedAt, twin.copiedAt)
+                    clip.pinned = clip.pinned || twin.pinned
+                    clip.updatedAt = max(clip.updatedAt, twin.updatedAt)
+                    if hasContent(twin.id), !hasContent(clip.id), let content = content(for: twin.id) { storeContent(content, for: clip.id) }
+                    try? db.upsert(clip)
+                    delete([twin.id], sound: false)
+                    SyncEngine.shared.mark(.clipping, clip.id.uuidString)
+                } else {
+                    try? db.setTombstone("clipping:\(clip.id.uuidString)", at: max(clip.updatedAt, twin.updatedAt))
+                    SyncEngine.shared.mark(.clipping, clip.id.uuidString)
+                    return nil
+                }
+            } else {
+                try? db.upsert(clip)
+            }
+            clippingsChanged()
+            return hasContent(clip.id) ? nil : clip.id
+        case .pastebin:
+            if let item = try? SyncMerge.decode(Pastebin.self, from: payload) { upsertLocal(item, into: &library.pastebins) }
+        case .smartPastebin:
+            if let item = try? SyncMerge.decode(SmartPastebin.self, from: payload) { upsertLocal(item, into: &library.smartPastebins) }
+        case .filter:
+            if let item = try? SyncMerge.decode(Filter.self, from: payload) { upsertLocal(item, into: &library.filters) }
+        case .snippet:
+            if let item = try? SyncMerge.decode(Snippet.self, from: payload) { upsertLocal(item, into: &library.snippets) }
+        case .setting: break
+        }
+        metaChanged()
+        return nil
+    }
+
+    private func upsertLocal<T: Identifiable>(_ item: T, into array: inout [T]) {
+        if let i = array.firstIndex(where: { $0.id == item.id }) { array[i] = item } else { array.append(item) }
+    }
+
+    /// After a batch of remote changes: shortcuts and abbreviations may have changed.
+    func remoteBatchApplied() {
         HotKeyCenter.shared.apply()
         SnippetExpander.shared.refresh()
-        if !added.isEmpty { StackController.shared.libraryChanged() }
+        StackController.shared.libraryChanged()
     }
 }
 

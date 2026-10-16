@@ -27,7 +27,7 @@ Requires macOS 26 or later.
   - Colors get swatches in every notation.
   - Links show a preview.
 - **Secrets stay secret**: API keys, private keys, card numbers, one-time codes and password-like text are hidden, never synced, and deleted after a few minutes. Copies that password managers mark as private are never recorded.
-- **Encrypted sync**: history, pastebins, filters, snippets and settings sync through iCloud Drive. Every file is sealed with AES-256-GCM on your Mac. The key is protected by a passphrase that never leaves your Macs.
+- **Encrypted sync**: history, pastebins, filters, snippets and settings sync through iCloud. Every record is sealed with AES-256-GCM on your Mac. The key is protected by a passphrase that never leaves your Macs.
 - **Automation**:
   - Shortcuts actions.
   - A `pastelens` command-line tool.
@@ -39,11 +39,15 @@ Requires macOS 26 or later.
 
 Turn on sync in **Settings › Sync** and choose a passphrase. Enter the same passphrase on your other Macs.
 
-- A random 256-bit key encrypts each file with AES-256-GCM before it is written to iCloud Drive.
-- That key is stored in iCloud only after being wrapped with a key derived from your passphrase (PBKDF2-SHA256, 600,000 rounds).
-- On each Mac, the key is kept in the login keychain.
-- Each Mac writes only its own files, so iCloud never has to resolve a conflict. Changes merge record by record, and the newest change wins.
+- PasteLens syncs through CloudKit, Apple's iCloud database, one small record per change. Other Macs fetch only what changed, and iCloud tells them when there's something new.
+- A random 256-bit key seals every record and every clipping's bytes with AES-256-GCM before they leave your Mac. Apple only sees record names, dates and ciphertext.
+- That key is stored in iCloud only after being wrapped with a key derived from your passphrase (PBKDF2-SHA256, 600,000 rounds). On each Mac, the key is kept in the login keychain.
+- When two Macs change the same thing, the newer change wins on every Mac. Deletions travel as records too, so a Mac that was offline can't bring something back.
 - Secrets and clippings over the size limit you set stay on the Mac where they were copied.
+
+## Storage
+
+Clippings are kept in an SQLite database with a full-text index (`~/Library/Application Support/PasteLens/PasteLens.sqlite`), and each clipping's bytes are kept in its own file beside it. Lists load a page at a time and search uses the index, so PasteLens stays quick with tens of thousands of clippings. Versions before 1.0.6 kept a `library.json`; it's moved into the database automatically and the old file is kept as `library-before-database.json`.
 
 ## Command line and MCP
 
@@ -65,8 +69,8 @@ The GitHub version checks for new releases. In **Settings › General** you choo
 You need Xcode 26 or later and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```bash
-swift test          # PasteLensKit: filters, encryption, sync merge, import, bridge
-./build_app.sh      # Developer ID build in .build/app
+swift test          # PasteLensKit: filters, encryption, database, sync merge, import, bridge
+./build_app.sh      # archive, then export for Developer ID with the CloudKit provisioning profile
 ./release.sh 1.0.1  # build, notarize, DMG, GitHub release
 ```
 

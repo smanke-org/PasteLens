@@ -41,7 +41,7 @@ final class StackController {
         let before = NSPasteboard.general.changeCount
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             MainActor.assumeIsolated {
-                guard NSPasteboard.general.changeCount != before, let clip = ClipboardMonitor.shared.captureNow() ?? ClipStore.shared.history.first else {
+                guard NSPasteboard.general.changeCount != before, let clip = ClipboardMonitor.shared.captureNow() ?? ClipStore.shared.recent(1).first else {
                     SoundPlayer.play(.error)
                     return
                 }

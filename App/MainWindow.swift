@@ -120,12 +120,12 @@ struct Sidebar: View {
     var body: some View {
         List(selection: Binding(get: { state.section }, set: { if let s = $0 { state.section = s } })) {
             Section("Clippings") {
-                label("History", "clock", count: store.history.count).tag(MainState.Section.clips(.history))
-                label("Pinned", "pin", count: store.library.clippings.filter(\.pinned).count).tag(MainState.Section.clips(.pinned))
+                label("History", "clock", count: store.revision >= 0 ? store.count(.history) : nil).tag(MainState.Section.clips(.history))
+                label("Pinned", "pin", count: store.count(.pinned)).tag(MainState.Section.clips(.pinned))
             }
             Section("Pastebins") {
                 ForEach(store.library.pastebins.sorted { $0.order < $1.order }) { bin in
-                    label(bin.name, bin.symbol, color: BinColor.color(bin.colorName), count: store.library.clippings.filter { $0.pastebinIDs.contains(bin.id) }.count)
+                    label(bin.name, bin.symbol, color: BinColor.color(bin.colorName), count: store.count(.pastebin(bin.id)))
                         .tag(MainState.Section.clips(.pastebin(bin.id)))
                         .dropDestination(for: String.self) { items, _ in
                             let ids = items.compactMap(UUID.init(uuidString:)).filter { store.clip($0) != nil }
@@ -196,19 +196,28 @@ struct ClipList: View {
     @State private var confirmClear = false
     @State private var shortcutFor: Clipping?
 
-    var clips: [Clipping] { store.clippings(in: scope, query: state.query) }
+    /// Rows load 200 at a time; scrolling to the end loads more.
+    @State private var limit = 200
+
+    var clips: [Clipping] {
+        _ = store.revision
+        return store.clippings(in: scope, query: state.query, limit: limit)
+    }
 
     var body: some View {
         let items = clips
         List(selection: $state.selection) {
             ForEach(items) { clip in
                 ClipRowContent(clip: clip, lines: max(Preferences.shared.rowLines, 1))
+                    .onAppear { if clip.id == items.last?.id, items.count >= limit { limit += 200 } }
                     .tag(clip.id)
                     .draggable(dragText(clip))
                     .contextMenu { ClipMenu(ids: menuTargets(clip), scope: scope, shortcutFor: $shortcutFor) }
             }
         }
         .searchable(text: $state.query, placement: .toolbar, prompt: "Search")
+        .onChange(of: state.query) { limit = 200 }
+        .onChange(of: scope) { limit = 200 }
         .onDeleteCommand { store.delete(Array(state.selection)) }
         .onCopyCommand {
             let ids = Array(state.selection)
@@ -481,7 +490,15 @@ struct SmartPastebinEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var store = ClipStore.shared
 
-    var matching: Int { store.library.clippings.filter { bin.matches($0) }.count }
+    var matching: Int {
+        let now = Date()
+        var n = 0
+        store.db.forEach(.all) { clip in
+            if bin.matches(clip, now: now) { n += 1 }
+            return n < 10_000
+        }
+        return n
+    }
 
     var body: some View {
         Form {

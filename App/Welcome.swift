@@ -93,7 +93,7 @@ struct WelcomeView: View {
     var finish: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Sync your Macs").font(.title2.bold())
-            Text("Turn on sync to share history, pastebins, filters, snippets and settings with your other Macs through iCloud Drive. Everything is encrypted with AES-256 on this Mac using a passphrase only you know.")
+            Text("Turn on sync to share history, pastebins, filters, snippets and settings with your other Macs through iCloud. Everything is encrypted with AES-256 on this Mac using a passphrase only you know.")
             Button("Set Up Sync…") { SettingsWindow.shared.show(tab: "Sync") }
             Divider()
             Text("Find PasteLens in the menu bar (the clipboard icon). Press ⇧⌘V anywhere to start.")

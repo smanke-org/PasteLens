@@ -141,7 +141,7 @@ struct FilterEditor: View {
         }
         .onAppear {
             key = filter.hotKey.map(HotKey.init)
-            sample = ClipStore.shared.history.first.flatMap { FilterApplier.sourceText(for: $0) }.map { String($0.prefix(2000)) } ?? "Sample text"
+            sample = ClipStore.shared.recent(1).first.flatMap { FilterApplier.sourceText(for: $0) }.map { String($0.prefix(2000)) } ?? "Sample text"
             run()
         }
         .onChange(of: filter) { save(); run() }

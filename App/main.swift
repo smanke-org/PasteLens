@@ -17,17 +17,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pruneTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let launchStart = Date()
+        func step(_ name: String) {
+            if ProcessInfo.processInfo.environment["PASTELENS_TIMING"] != nil {
+                NSLog("PasteLens timing: \(name) at %.0f ms", Date().timeIntervalSince(launchStart) * 1000)
+            }
+        }
         NSApp.mainMenu = mainMenu()
         let newInstall = !UserDefaults.standard.bool(forKey: "welcomed")
 
         _ = ClipStore.shared
+        step("library")
         PasswordApps.addInstalled()
         ClipboardMonitor.shared.start()
         HotKeyCenter.shared.perform = { [weak self] target in self?.perform(target) }
         HotKeyCenter.shared.apply()
         SnippetExpander.shared.refresh()
         SyncEngine.shared.start()
+        step("sync")
         BridgeHandler.start()
+        step("bridge")
 
         setUpStatusItem()
         NotificationCenter.default.addObserver(forName: AppPresence.menuBarDidChange, object: nil, queue: .main) { _ in
@@ -44,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Expired secrets and history limits are checked every minute.
         ClipStore.shared.pruneHistory()
+        step("prune")
         pruneTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
             MainActor.assumeIsolated { ClipStore.shared.pruneHistory() }
         }
@@ -57,6 +67,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if !AppPresence.showInMenuBar && !AppPresence.showInDock {
             SettingsWindow.shared.show()
         }
+    }
+
+    /// CloudKit says another Mac changed something.
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
+        NSLog("PasteLens: CloudKit change notification")
+        SyncEngine.shared.pull()
+    }
+
+    func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NSLog("PasteLens: registered for CloudKit change notifications")
+    }
+
+    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NSLog("PasteLens: no CloudKit change notifications (\(error.localizedDescription)); checking every minute instead")
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        SyncEngine.shared.pull()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -190,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Quick Paste", #selector(quickPaste), hotKey: prefs.hotKey(.quickPaste), symbol: "magnifyingglass"))
         menu.addItem(item("Open PasteLens", #selector(showMain), hotKey: prefs.hotKey(.mainWindow), symbol: "macwindow"))
 
-        let recent = Array(ClipStore.shared.history.prefix(10))
+        let recent = ClipStore.shared.recent(10)
         if !recent.isEmpty {
             menu.addItem(.separator())
             let header = NSMenuItem(title: "Recent", action: nil, keyEquivalent: "")

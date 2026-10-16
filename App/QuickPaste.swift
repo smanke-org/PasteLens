@@ -31,6 +31,7 @@ final class QuickPastePanel {
 
     func show(source: QuickPasteModel.Source = .history, viaHotKey: Bool = false) {
         Activity.shared.touch()
+        SyncEngine.shared.pull()
         model.reset(source: source)
         model.releaseToPaste = viaHotKey && Preferences.shared.releaseToPaste && Self.modifiersHeld
         if panel == nil {
@@ -173,9 +174,19 @@ final class QuickPasteModel {
         selection = 0
     }
 
+    @ObservationIgnored private var clipsKey = ""
+    @ObservationIgnored private var clipsCache: [Clipping] = []
+
+    /// The list, read once per change of source, search or library rather than on every use.
     var clips: [Clipping] {
+        let revision = ClipStore.shared.revision
         guard let scope = source.scope else { return [] }
-        return Array(ClipStore.shared.clippings(in: scope, query: query).prefix(300))
+        let key = "\(scope)|\(query)|\(revision)"
+        if key != clipsKey {
+            clipsCache = ClipStore.shared.clippings(in: scope, query: query, limit: 300)
+            clipsKey = key
+        }
+        return clipsCache
     }
 
     var snippets: [Snippet] {

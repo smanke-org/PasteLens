@@ -152,8 +152,8 @@ struct HistorySettings: View {
                 }
             } header: { Text("History") } footer: {
                 Text(prefs.unlimited
-                     ? "History now holds \(store.history.count.formatted()) clipping\(store.history.count == 1 ? "" : "s"), and nothing is removed however many there are or however old they get. Turn this off to use the limits again."
-                     : "History now holds \(store.history.count.formatted()) clipping\(store.history.count == 1 ? "" : "s"). The oldest go first once there are more than you keep. Pinned clippings and those saved in a pastebin are never removed. Type 0 to keep everything.")
+                     ? "History now holds \((store.count(.history) ?? 0).formatted()) clipping\(store.count(.history) == 1 ? "" : "s"), and nothing is removed however many there are or however old they get. Turn this off to use the limits again."
+                     : "History now holds \((store.count(.history) ?? 0).formatted()) clipping\(store.count(.history) == 1 ? "" : "s"). The oldest go first once there are more than you keep. Pinned clippings and those saved in a pastebin are never removed. Type 0 to keep everything.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .onChange(of: prefs.maxClippings) { store.pruneHistory() }
@@ -379,7 +379,7 @@ struct SyncSettings: View {
                         }
                     }
                     if sync.pendingContent > 0 { LabeledContent("Transferring", value: "\(sync.pendingContent) clipping\(sync.pendingContent == 1 ? "" : "s")") }
-                    LabeledContent("Folder", value: sync.folderDescription)
+                    LabeledContent("Stored in", value: sync.folderDescription)
                     Button("Sync Now") { sync.pull() }
                 }
                 Section("Other Macs") {
@@ -434,7 +434,7 @@ struct SyncSettings: View {
         .confirmationDialog("Delete synced data?", isPresented: $confirmDelete) {
             Button("Delete from iCloud", role: .destructive) { sync.deleteCloudData() }
         } message: {
-            Text("PasteLens's encrypted files are removed from iCloud Drive. Clippings on each Mac stay. Other Macs stop syncing until you set up again.")
+            Text("PasteLens's encrypted records are removed from iCloud. Clippings on each Mac stay. Other Macs stop syncing until you set up again.")
         }
     }
 
@@ -465,7 +465,7 @@ struct SyncSettings: View {
                 Button(joining ? "Join and Sync" : "Turn On Sync") { setUp() }.disabled(!ready || working).keyboardShortcut(.defaultAction)
             }
         } header: {
-            Text("Sync with your other Macs through iCloud Drive")
+            Text("Sync with your other Macs through iCloud")
         }
     }
 

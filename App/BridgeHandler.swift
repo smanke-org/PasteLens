@@ -37,30 +37,30 @@ enum BridgeHandler {
         case "get-pastebins":
             let lib = store.library
             var bins: [[String: Any]] = [
-                ["id": "history", "name": "History", "kind": "history", "count": store.history.count],
-                ["id": "pinned", "name": "Pinned", "kind": "pinned", "count": lib.clippings.filter(\.pinned).count],
+                ["id": "history", "name": "History", "kind": "history", "count": store.count(.history) ?? 0],
+                ["id": "pinned", "name": "Pinned", "kind": "pinned", "count": store.count(.pinned) ?? 0],
             ]
             bins += lib.pastebins.map { ["id": $0.id.uuidString, "name": $0.name, "kind": "pastebin",
-                                          "count": store.clippings(in: .pastebin($0.id)).count] }
+                                          "count": store.count(.pastebin($0.id)) ?? 0] }
             bins += lib.smartPastebins.map { ["id": $0.id.uuidString, "name": $0.name, "kind": "smart",
-                                               "count": store.clippings(in: .smart($0.id)).count] }
+                                               "count": store.clippings(in: .smart($0.id), limit: 10_000).count] }
             return bins
 
         case "get-clippings":
-            var items = store.clippings(in: try scope(), query: args["query"] ?? "")
+            let offset = max(Int(args["offset"] ?? "") ?? 0, 0)
+            let limit = min(max(Int(args["limit"] ?? "") ?? 20, 1), 500)
+            var items = store.clippings(in: try scope(), query: args["query"] ?? "", limit: args["since"] == nil ? offset + limit : 10_000)
             if let since = args["since"] {
                 guard let date = ISO8601DateFormatter().date(from: since) ?? ISO8601DateFormatter.dateOnly.date(from: since) else {
                     throw Bridge.Failure("--since must be an ISO 8601 date")
                 }
                 items = items.filter { $0.copiedAt >= date }
             }
-            let offset = max(Int(args["offset"] ?? "") ?? 0, 0)
-            let limit = min(max(Int(args["limit"] ?? "") ?? 20, 1), 500)
             return items.dropFirst(offset).prefix(limit).map(describe)
 
         case "get-clipping-by-index":
             guard let index = Int(args["index"] ?? ""), index >= 0 else { throw Bridge.Failure("--index must be a number from 0") }
-            let items = store.clippings(in: try scope())
+            let items = store.clippings(in: try scope(), limit: index + 1)
             guard items.indices.contains(index) else { throw Bridge.Failure("No clipping at index \(index) (there are \(items.count)).") }
             return describe(items[index])
 
@@ -178,7 +178,7 @@ enum BridgeHandler {
         case "debug-sync-status":
             let sync = SyncEngine.shared
             return ["status": sync.status.summary, "devices": sync.devices.map(\.name), "pending": sync.pendingContent,
-                    "clippings": store.library.clippings.count, "hasContent": store.library.clippings.filter { store.hasContent($0.id) }.count]
+                    "clippings": store.db.totalCount, "hasContent": store.db.ids(.all).filter { store.hasContent($0) }.count]
         case "debug-show":
             switch args["window"] ?? "" {
             case "quickpaste": QuickPastePanel.shared.show()
@@ -214,6 +214,36 @@ enum BridgeHandler {
                 window.setFrame(frame, display: true)
             }
             return ["ok": true]
+        case "debug-generate":
+            // Adds made-up text clippings, for measuring how PasteLens copes with a big history.
+            let count = Int(args["count"] ?? "") ?? 1000
+            let words = ["invoice", "meeting", "project", "launch", "budget", "design", "review", "harbor", "friday", "update",
+                         "client", "report", "draft", "summary", "schedule", "travel", "receipt", "notes", "plan", "team"]
+            var rng = SystemRandomNumberGenerator()
+            let start = Date()
+            var batch: [(ClipContent, Clipping)] = []
+            for i in 0..<count {
+                let text = (0..<Int.random(in: 20...120, using: &rng)).map { _ in words.randomElement(using: &rng)! }.joined(separator: " ") + " #\(i)"
+                let content = ClipContent.text(text)
+                var clip = ClipBuilder.make(from: content, source: ("com.apple.Notes", "Notes"), origin: DeviceIdentity.id,
+                                            now: Date().addingTimeInterval(-Double(i) * 60))
+                clip.updatedAt = Date()
+                batch.append((content, clip))
+                if batch.count == 2_000 { store.addQuietly(batch); batch = [] }
+            }
+            store.addQuietly(batch)
+            return ["added": count, "seconds": Date().timeIntervalSince(start)]
+
+        case "debug-bench":
+            func time(_ work: () -> Void) -> Double { let t = Date(); work(); return Date().timeIntervalSince(t) * 1000 }
+            var r: [String: Any] = ["clippings": store.db.totalCount]
+            r["search_ms"] = ["harbr", "budget friday", "zzzz", "#4242"].map { q in time { _ = store.clippings(in: .history, query: q) } }
+            r["list_page_ms"] = time { _ = store.clippings(in: .history, limit: 200) }
+            r["count_ms"] = time { _ = store.count(.history) }
+            if let first = store.recent(1).first { r["save_ms"] = time { store.update(first.id, sync: false) { $0.note = "bench" } } }
+            r["db_bytes"] = (try? FileManager.default.attributesOfItem(atPath: store.folder.appendingPathComponent("PasteLens.sqlite").path)[.size] as? Int) ?? 0
+            return r
+
         case "debug-sync-pull":
             SyncEngine.shared.pull()
             return ["ok": true]

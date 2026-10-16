@@ -114,18 +114,24 @@ enum Importer {
             binIDs[name] = id
             for uuid in uuids { membership[uuid, default: []].append(id) }
         }
-        let existing = Set(store.library.clippings.map(\.contentHash))
-        var added = 0
+        var seen = Set<String>()
+        var batch: [(ClipContent, Clipping)] = []
         for clip in result.clips {
             let hash = ClipBuilder.hash(clip.content)
-            if existing.contains(hash) { continue }
+            if store.db.anyClip(withHash: hash) || !seen.insert(hash).inserted { continue }
             let bins = membership[clip.uuid] ?? []
+            var made = ClipBuilder.make(from: clip.content, source: (clip.sourceBundleID, clip.sourceName), origin: DeviceIdentity.id,
+                                        imageSize: ClipStore.imageSize(clip.content), now: clip.createdAt)
+            made.copiedAt = clip.copiedAt
+            made.updatedAt = Date()
+            made.title = clip.title
             // Each clipping lives in one place: a pastebin if it was saved in one, otherwise History.
-            let inHistory = bins.isEmpty
-            store.add(clip.content, title: clip.title, source: (clip.sourceBundleID, clip.sourceName), createdAt: clip.createdAt,
-                      copiedAt: clip.copiedAt, inHistory: inHistory, pastebins: bins)
-            added += 1
+            made.inHistory = bins.isEmpty
+            made.pastebinIDs = bins
+            batch.append((clip.content, made))
         }
+        store.addMany(batch)
+        let added = batch.count
         alert.messageText = "Imported \(added) Clipping\(added == 1 ? "" : "s")"
         alert.informativeText = "\(binIDs.count) pastebin\(binIDs.count == 1 ? "" : "s") came along. Clippings already in PasteLens were skipped. History limits apply from now on, so raise “Clippings to keep” if you imported more than it allows."
         alert.runModal()
