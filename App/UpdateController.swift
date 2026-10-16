@@ -1,3 +1,5 @@
+#if !APPSTORE
+// The App Store updates PasteLens itself, so its build has no updater.
 import AppKit
 
 /// Downloads and installs the latest release from GitHub, then restarts.
@@ -469,3 +471,5 @@ enum UpdateController {
     }
 }
 
+
+#endif

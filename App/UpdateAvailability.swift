@@ -1,3 +1,5 @@
+#if !APPSTORE
+// The App Store updates PasteLens itself, so its build has no updater.
 import Observation
 
 /// Whether a newer release is waiting, as found by the silent check at launch.
@@ -13,3 +15,5 @@ final class UpdateAvailability {
     var pending: String?
     private init() {}
 }
+
+#endif

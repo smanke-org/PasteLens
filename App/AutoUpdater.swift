@@ -1,3 +1,5 @@
+#if !APPSTORE
+// The App Store updates PasteLens itself, so its build has no updater.
 import AppKit
 import IOKit.pwr_mgt
 import Observation
@@ -47,10 +49,16 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
         didSet {
             guard policy != oldValue else { return }
             UserDefaults.standard.set(policy.rawValue, forKey: UpdatePolicy.key)
-            SettingsSync.shared.localDidChange()
+            SyncEngine.shared.settingChanged(UpdatePolicy.key)
             if policy != .off { requestNotificationPermission(); check() }
             if policy != .automatic { staged = nil }
         }
+    }
+
+    /// Follows a choice that arrived from another Mac.
+    func reloadPolicy() {
+        let current = UpdatePolicy.current
+        if current != policy { policy = current }
     }
 
     /// A verified update waiting for a quiet moment, with its version.
@@ -66,8 +74,8 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
     @ObservationIgnored private var checking = false
 
     // Overridable for testing, so a run doesn't take half an hour.
-    private let checkInterval = TimeInterval(ProcessInfo.processInfo.environment["PASTELENS_UPDATE_CHECK_SECONDS"].flatMap(Double.init) ?? 30 * 60)
-    private let effectsQuiet = TimeInterval(ProcessInfo.processInfo.environment["PASTELENS_UPDATE_EFFECTS_QUIET_SECONDS"].flatMap(Double.init) ?? 30 * 60)
+    private let checkInterval = TimeInterval(ProcessInfo.processInfo.environment["PASTELENS_UPDATE_CHECK_SECONDS"].flatMap(Double.init) ?? 10 * 60)
+    private let effectsQuiet = TimeInterval(ProcessInfo.processInfo.environment["PASTELENS_UPDATE_EFFECTS_QUIET_SECONDS"].flatMap(Double.init) ?? 10 * 60)
     private let userIdle = TimeInterval(ProcessInfo.processInfo.environment["PASTELENS_UPDATE_USER_IDLE_SECONDS"].flatMap(Double.init) ?? 2 * 60)
 
     private static let installedFromKey = "update.autoInstalledFrom"
@@ -263,16 +271,15 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let installable = response.notification.request.content.categoryIdentifier == Self.category
-        let historyID = response.notification.request.content.userInfo["historyID"] as? String
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 // Clicking the banner or its Install button opens the usual confirmation,
                 // so the user still sees what they're agreeing to.
                 if installable { UpdateController.checkForUpdates() }
-                // A watched region's change opens History on the reading that fired it.
-                if let historyID { HistoryWindow.shared.show(selecting: UUID(uuidString: historyID)) }
             }
         }
         completionHandler()
     }
 }
+
+#endif

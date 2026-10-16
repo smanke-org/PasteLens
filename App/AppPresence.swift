@@ -22,7 +22,6 @@ enum AppPresence {
         set {
             guard newValue != showInDock || UserDefaults.standard.object(forKey: Key.dock) == nil else { return }
             UserDefaults.standard.set(newValue, forKey: Key.dock)
-            SettingsSync.shared.localDidChange()
         }
     }
 
@@ -32,7 +31,6 @@ enum AppPresence {
             guard newValue != showInMenuBar || UserDefaults.standard.object(forKey: Key.menuBar) == nil else { return }
             UserDefaults.standard.set(newValue, forKey: Key.menuBar)
             NotificationCenter.default.post(name: menuBarDidChange, object: nil)
-            SettingsSync.shared.localDidChange()
         }
     }
 

@@ -230,6 +230,23 @@ public struct Library: Codable, Sendable {
     /// Ids of things deleted here or elsewhere, with when, so a sync can't bring them back.
     public var tombstones: [String: Date] = [:]
     public var seededDefaults = false
+    /// Global shortcuts that paste one particular clipping. Kept on this Mac.
+    public var clipHotKeys: [UUID: StoredHotKey] = [:]
 
     public init() {}
+
+    enum CodingKeys: String, CodingKey { case clippings, pastebins, smartPastebins, filters, snippets, tombstones, seededDefaults, clipHotKeys }
+
+    /// Tolerates fields added in later versions being absent.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        clippings = try c.decodeIfPresent([Clipping].self, forKey: .clippings) ?? []
+        pastebins = try c.decodeIfPresent([Pastebin].self, forKey: .pastebins) ?? []
+        smartPastebins = try c.decodeIfPresent([SmartPastebin].self, forKey: .smartPastebins) ?? []
+        filters = try c.decodeIfPresent([Filter].self, forKey: .filters) ?? []
+        snippets = try c.decodeIfPresent([Snippet].self, forKey: .snippets) ?? []
+        tombstones = try c.decodeIfPresent([String: Date].self, forKey: .tombstones) ?? [:]
+        seededDefaults = try c.decodeIfPresent(Bool.self, forKey: .seededDefaults) ?? false
+        clipHotKeys = try c.decodeIfPresent([UUID: StoredHotKey].self, forKey: .clipHotKeys) ?? [:]
+    }
 }

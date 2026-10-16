@@ -1,14 +1,21 @@
 import AppKit
 import Carbon.HIToolbox
+import PasteLensKit
 import SwiftUI
 
 /// A keyboard shortcut: a key code plus Carbon modifier flags, and how to show it.
-struct HotKey: Codable, Equatable {
+struct HotKey: Codable, Equatable, Hashable {
     var keyCode: UInt32
     var modifiers: UInt32
     var display: String
 
     static let controlOptionCommand = UInt32(controlKey | optionKey | cmdKey)
+
+    init(_ stored: StoredHotKey) {
+        self.init(keyCode: stored.keyCode, modifiers: stored.modifiers, display: stored.display)
+    }
+
+    var stored: StoredHotKey { StoredHotKey(keyCode: keyCode, modifiers: modifiers, display: display) }
 
     init(keyCode: UInt32, modifiers: UInt32, display: String) {
         self.keyCode = keyCode
@@ -87,63 +94,76 @@ struct HotKey: Codable, Equatable {
 }
 
 /// System-wide shortcuts through Carbon's RegisterEventHotKey: works from a menu bar app
-/// and needs no permission.
+/// and needs no permission. Besides the fixed actions, pastebins, filters and single
+/// clippings can carry their own shortcut.
 @MainActor
 final class HotKeyCenter {
-    enum Action: UInt32, CaseIterable {
-        case captureText = 1
-        case captureCode = 2
-        case captureAgain = 3
-        case translate = 4
-        case liveTranslate = 5
-        case watch = 6
-        case history = 7
-
-        @MainActor var hotKey: HotKey? {
-            let prefs = Preferences.shared
-            switch self {
-            case .captureText: return prefs.captureTextHotKey
-            case .captureCode: return prefs.captureCodeHotKey
-            case .captureAgain: return prefs.captureAgainHotKey
-            case .translate: return prefs.translateHotKey
-            case .liveTranslate: return prefs.liveTranslateHotKey
-            case .watch: return prefs.watchHotKey
-            case .history: return prefs.historyHotKey
-            }
-        }
+    enum Target: Hashable {
+        case action(HotKeyAction)
+        case pastebin(UUID)
+        case filter(UUID)
+        case clipping(UUID)
     }
 
     static let shared = HotKeyCenter()
-    var perform: ((Action) -> Void)?
-    private var refs: [Action: EventHotKeyRef] = [:]
+    var perform: ((Target) -> Void)?
+    private var refs: [UInt32: EventHotKeyRef] = [:]
+    private var targets: [UInt32: Target] = [:]
     private var installed = false
 
-    /// Registers the shortcuts in Preferences, replacing earlier registrations.
+    /// Everything that should be registered right now.
+    private func bindings() -> [(Target, HotKey)] {
+        var out: [(Target, HotKey)] = []
+        for action in HotKeyAction.allCases { if let key = Preferences.shared.hotKey(action) { out.append((.action(action), key)) } }
+        let library = ClipStore.shared.library
+        for bin in library.pastebins { if let k = bin.hotKey { out.append((.pastebin(bin.id), HotKey(k))) } }
+        for filter in library.filters { if let k = filter.hotKey { out.append((.filter(filter.id), HotKey(k))) } }
+        for (id, k) in ClipStore.shared.clipHotKeys { out.append((.clipping(id), HotKey(k))) }
+        return out
+    }
+
+    /// Registers the shortcuts, replacing earlier registrations.
     func apply() {
         installHandlerOnce()
         unregisterAll()
-        for action in Action.allCases {
-            guard let key = action.hotKey else { continue }
+        var next: UInt32 = 1
+        for (target, key) in bindings() {
             var ref: EventHotKeyRef?
-            let id = EventHotKeyID(signature: OSType(0x5458_4C53), id: action.rawValue) // "TXLS"
+            let id = EventHotKeyID(signature: OSType(0x504C_4E53), id: next) // "PLNS"
             let status = RegisterEventHotKey(key.keyCode, key.modifiers, id, GetApplicationEventTarget(), 0, &ref)
             if status == noErr, let ref {
-                refs[action] = ref
+                refs[next] = ref
+                targets[next] = target
             } else {
-                NSLog("PasteLens: shortcut \(key.display) for \(action) not registered (\(status)), probably taken by another app")
+                NSLog("PasteLens: shortcut \(key.display) for \(target) not registered (\(status)), probably taken by another app")
             }
+            next += 1
         }
     }
 
     /// Whether a key press is one of PasteLens's own shortcuts.
     func isOwnHotKey(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Bool {
-        Action.allCases.contains { $0.hotKey?.matches(keyCode: keyCode, flags: flags) == true }
+        bindings().contains { $0.1.matches(keyCode: keyCode, flags: flags) }
+    }
+
+    /// Who already uses a shortcut, to warn before assigning it twice.
+    func owner(of key: HotKey) -> String? {
+        for (target, existing) in bindings() where existing.keyCode == key.keyCode && existing.modifiers == key.modifiers {
+            switch target {
+            case .action(let a): return a.title
+            case .pastebin(let id): return ClipStore.shared.library.pastebins.first { $0.id == id }?.name
+            case .filter(let id): return ClipStore.shared.library.filters.first { $0.id == id }?.name
+            case .clipping: return "a clipping"
+            }
+        }
+        return nil
     }
 
     /// While a shortcut is being recorded, the current ones must not fire.
     func unregisterAll() {
         for ref in refs.values { UnregisterEventHotKey(ref) }
         refs.removeAll()
+        targets.removeAll()
     }
 
     private func installHandlerOnce() {
@@ -154,8 +174,8 @@ final class HotKeyCenter {
     }
 
     fileprivate func fire(_ id: UInt32) {
-        guard let action = Action(rawValue: id) else { return }
-        perform?(action)
+        guard let target = targets[id] else { return }
+        perform?(target)
     }
 }
 

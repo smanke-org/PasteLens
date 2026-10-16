@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 // Generates the app icon in the same periodic-table style as M3 Tracker: atomic number
-// "27", tipped 45° to the left, the "Tl" symbol, and the name along the bottom, on
-// the glowing phosphor green of The X-Files logo.
+// "27", tipped 45° to the left, the "Pl" symbol, and the name along the bottom, on
+// a mint-green gradient.
 // Run with:
 //   swift Tools/generate_icon.swift
 //
@@ -39,8 +39,8 @@ ctx.clip()
 
 let colorSpace = CGColorSpaceCreateDeviceRGB()
 let bodyColors = [
-    NSColor(srgbRed: 0.80, green: 0.91, blue: 1.00, alpha: 1.0).cgColor,
-    NSColor(srgbRed: 0.56, green: 0.77, blue: 0.96, alpha: 1.0).cgColor,
+    NSColor(srgbRed: 0.74, green: 0.96, blue: 0.84, alpha: 1.0).cgColor,
+    NSColor(srgbRed: 0.30, green: 0.78, blue: 0.58, alpha: 1.0).cgColor,
 ] as CFArray
 let bodyGradient = CGGradient(colorsSpace: colorSpace, colors: bodyColors, locations: [0.0, 1.0])!
 ctx.drawLinearGradient(
@@ -102,10 +102,10 @@ ctx.restoreGState()
 
 // The element symbol, centered. Without the name below it, it grows and recenters to
 // fill the tile.
-let symbol = "Tl"
+let symbol = "Pl"
 // A two-letter symbol is wider than M3's "M³", so the nameless variant can't grow as far without
 // running into the 27; it sits a little below center to clear it.
-drawSymbol("Tl", in: tile, includeName: includeName, ctx: ctx)
+drawSymbol("Pl", in: tile, includeName: includeName, ctx: ctx)
 
 // Name along the bottom.
 if includeName {
