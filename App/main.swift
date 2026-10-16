@@ -59,7 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         #if !APPSTORE
-        AutoUpdater.shared.start()
+        // Test copies (with their own data folder) leave updates to the real app.
+        if ProcessInfo.processInfo.environment["PASTELENS_DATA_FOLDER"] == nil { AutoUpdater.shared.start() }
         #endif
         if newInstall {
             AppDefaults.store.set(true, forKey: "welcomed")

@@ -13,6 +13,7 @@ final class MainWindow: NSObject, NSWindowDelegate {
     /// The app that was in front when the window opened: pasting goes back to it.
     private var previousApp: NSRunningApplication?
     private var resignObserver: Any?
+    private var keyMonitor: Any?
 
     func show(selecting clip: UUID? = nil) {
         Activity.shared.touch()
@@ -30,6 +31,10 @@ final class MainWindow: NSObject, NSWindowDelegate {
             self.window = window
             // Clicking into another app closes the window, like a menu. Other PasteLens
             // windows (Settings, a sheet, an Open panel) don't count.
+            // ⌃1–⌃9 move the selected clippings to that pastebin.
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                MainActor.assumeIsolated { MainWindow.shared.handlePastebinKey(event) ? nil : event }
+            }
             resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification,
                                                                     object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated { MainWindow.shared.closeIfOpen() }
@@ -41,6 +46,17 @@ final class MainWindow: NSObject, NSWindowDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func handlePastebinKey(_ event: NSEvent) -> Bool {
+        guard event.window === window, event.modifierFlags.intersection([.command, .option, .control, .shift]) == .control,
+              let digit = Int(event.charactersIgnoringModifiers ?? ""), (1...9).contains(digit),
+              case .clips(let scope) = state.section, !state.selection.isEmpty else { return false }
+        let bins = ClipStore.shared.library.pastebins.sorted { $0.order < $1.order }
+        guard bins.indices.contains(digit - 1), scope != .pastebin(bins[digit - 1].id) else { NSSound.beep(); return true }
+        ClipStore.shared.move(Array(state.selection), to: bins[digit - 1].id, from: scope)
+        state.selection = []
+        return true
     }
 
     private func closeIfOpen() {
@@ -153,8 +169,9 @@ struct Sidebar: View {
                 label("Pinned", "pin", count: store.count(.pinned)).tag(MainState.Section.clips(.pinned))
             }
             Section("Pastebins") {
-                ForEach(store.library.pastebins.sorted { $0.order < $1.order }) { bin in
-                    label(bin.name, bin.symbol, color: BinColor.color(bin.colorName), count: store.count(.pastebin(bin.id)))
+                ForEach(Array(store.library.pastebins.sorted { $0.order < $1.order }.enumerated()), id: \.element.id) { n, bin in
+                    label(bin.name, bin.symbol, color: BinColor.color(bin.colorName), count: store.count(.pastebin(bin.id)),
+                          shortcut: n < 9 ? "⌃\(n + 1)" : nil)
                         .tag(MainState.Section.clips(.pastebin(bin.id)))
                         .dropDestination(for: String.self) { items, _ in
                             let ids = items.compactMap(UUID.init(uuidString:)).filter { store.clip($0) != nil }
@@ -206,10 +223,11 @@ struct Sidebar: View {
         }
     }
 
-    func label(_ title: String, _ symbol: String, color: Color = .accentColor, count: Int?) -> some View {
+    func label(_ title: String, _ symbol: String, color: Color = .accentColor, count: Int?, shortcut: String? = nil) -> some View {
         HStack {
             Label { Text(title) } icon: { Image(systemName: symbol).foregroundStyle(color) }
             Spacer()
+            if let shortcut { Text(shortcut).font(.caption).foregroundStyle(.tertiary).help("Press \(shortcut) to move the selected clippings here") }
             if let count { Text("\(count)").font(.caption).foregroundStyle(.secondary) }
         }
     }
@@ -289,6 +307,14 @@ struct ClipList: View {
                     .disabled(state.selection.isEmpty).help("Add to the paste stack")
                 Button { togglePin() } label: { Label("Pin", systemImage: "pin") }.disabled(state.selection.isEmpty).help("Pin or unpin")
                 Menu {
+                    ForEach(Array(store.library.pastebins.sorted { $0.order < $1.order }.enumerated()), id: \.element.id) { n, bin in
+                        Button(n < 9 ? "\(bin.name)    ⌃\(n + 1)" : bin.name) { moveSelection(to: bin.id) }
+                            .disabled(scope == .pastebin(bin.id))
+                    }
+                } label: { Label("Move to Pastebin", systemImage: "tray.and.arrow.down") }
+                    .disabled(state.selection.isEmpty)
+                    .help("Move the selected clippings to a pastebin (⌃1–⌃9). ⌘-click to select several.")
+                Menu {
                     Button("Merge with New Lines") { merge("\n") }
                     Button("Merge with Blank Lines") { merge("\n\n") }
                     Button("Merge with Spaces") { merge(" ") }
@@ -345,6 +371,13 @@ struct ClipList: View {
     func copySelected() {
         guard let id = state.selection.first, let clip = store.clip(id) else { return }
         _ = Paster.copy(clip)
+    }
+
+    func moveSelection(to bin: UUID) {
+        let ids = ordered(state.selection)
+        guard !ids.isEmpty else { return }
+        store.move(ids, to: bin, from: scope)
+        state.selection = []
     }
 
     func togglePin() {

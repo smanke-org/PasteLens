@@ -143,8 +143,12 @@ final class QuickPasteModel {
 
     enum Action { case paste, pastePlain, typeOut, copy }
 
-    var query = "" { didSet { selection = 0; refreshPreview() } }
-    var source: Source = .history { didSet { selection = 0 } }
+    var query = "" { didSet { selection = 0; marked = []; refreshPreview() } }
+    var source: Source = .history { didSet { selection = 0; marked = [] } }
+    /// Clippings picked with ⌘-click or ⇧-click, to move or act on together.
+    var marked: Set<UUID> = []
+    /// A short confirmation shown in the footer, such as "Moved 3 to Saved".
+    var notice: String?
     var selection = 0 { didSet { refreshPreview() } }
     var releaseToPaste = false
     /// When set, the list shows filters to apply to this clipping.
@@ -223,6 +227,46 @@ final class QuickPasteModel {
         return filterMode != nil && f.indices.contains(selection) ? f[selection] : nil
     }
 
+    /// Your own pastebins, in sidebar order: ⌃1 is the first.
+    var pastebins: [Pastebin] { ClipStore.shared.library.pastebins.sorted { $0.order < $1.order } }
+
+    /// What an action applies to: the picked clippings, in list order, or else the selected one.
+    var targets: [UUID] {
+        if marked.isEmpty { return selectedClip.map { [$0.id] } ?? [] }
+        return clips.map(\.id).filter(marked.contains)
+    }
+
+    /// A click on a row: plain selects it, ⌘ adds or removes it, ⇧ picks everything from the selection to it.
+    func click(_ index: Int) {
+        let list = clips
+        guard list.indices.contains(index) else { return }
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.command) {
+            if marked.isEmpty, let current = selectedClip, current.id != list[index].id { marked.insert(current.id) }
+            if marked.contains(list[index].id) { marked.remove(list[index].id) } else { marked.insert(list[index].id) }
+        } else if flags.contains(.shift) {
+            let range = min(selection, index)...max(selection, index)
+            marked.formUnion(range.filter { list.indices.contains($0) }.map { list[$0].id })
+        } else {
+            marked = []
+        }
+        selection = index
+    }
+
+    /// Moves the targets into a pastebin; they leave the list they're in.
+    func moveTargets(to bin: Pastebin) {
+        let ids = targets
+        guard !ids.isEmpty else { return }
+        ClipStore.shared.move(ids, to: bin.id, from: source.scope)
+        marked = []
+        notice = "Moved \(ids.count == 1 ? "1 clipping" : "\(ids.count) clippings") to \(bin.name)"
+        selection = min(selection, max(count - 1, 0))
+        let shown = notice
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            MainActor.assumeIsolated { if self?.notice == shown { self?.notice = nil } }
+        }
+    }
+
     func move(_ delta: Int) {
         guard count > 0 else { return }
         selection = (selection + delta + count) % count
@@ -261,7 +305,7 @@ final class QuickPasteModel {
         case kVK_PageDown: move(8); return true
         case kVK_PageUp: move(-8); return true
         case kVK_Escape:
-            if filterMode != nil { filterMode = nil } else if !query.isEmpty { query = "" } else { QuickPastePanel.shared.close() }
+            if filterMode != nil { filterMode = nil } else if !marked.isEmpty { marked = [] } else if !query.isEmpty { query = "" } else { QuickPastePanel.shared.close() }
             return true
         case kVK_Tab:
             guard filterMode == nil else { return true }
@@ -277,6 +321,11 @@ final class QuickPasteModel {
             return true
         default: break
         }
+        if flags == .control, filterMode == nil, source != .snippets,
+           let digit = Int(event.charactersIgnoringModifiers ?? ""), (1...9).contains(digit) {
+            if pastebins.indices.contains(digit - 1) { moveTargets(to: pastebins[digit - 1]) } else { NSSound.beep() }
+            return true
+        }
         guard flags == .command || flags == [.command, .shift] else { return false }
         if let digit = Int(event.charactersIgnoringModifiers ?? ""), (1...9).contains(digit), filterMode == nil {
             selection = digit - 1
@@ -286,7 +335,11 @@ final class QuickPasteModel {
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "c": activate(.copy); return true
         case "p": if let clip = selectedClip { ClipStore.shared.setPinned([clip.id], !clip.pinned) }; return true
-        case "s": if let clip = selectedClip { StackController.shared.add([clip.id]) }; return true
+        case "s": StackController.shared.add(targets); return true
+        case "a":
+            guard filterMode == nil, source != .snippets else { return false }
+            marked = Set(clips.map(\.id))
+            return true
         case "o": QuickPastePanel.shared.close(); MainWindow.shared.show(selecting: selectedClip?.id); return true
         case "\u{7f}", "\u{8}": // ⌘⌫
             if let clip = selectedClip, filterMode == nil { ClipStore.shared.delete([clip.id]); selection = min(selection, max(count - 1, 0)) }
@@ -369,15 +422,22 @@ struct QuickPasteView: View {
                     HStack(spacing: 4) {
                         ForEach(model.sources, id: \.0) { source, name, symbol in
                             Button { model.source = source } label: {
-                                Label(name, systemImage: symbol).font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(model.source == source ? Color.accentColor.opacity(0.25) : .clear, in: .capsule)
+                                HStack(spacing: 4) {
+                                    Label(name, systemImage: symbol)
+                                    if case .pastebin(let id) = source, let n = model.pastebins.firstIndex(where: { $0.id == id }), n < 9 {
+                                        Text("⌃\(n + 1)").foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(model.source == source ? Color.accentColor.opacity(0.25) : .clear, in: .capsule)
                             }.buttonStyle(.plain)
+                            .help(Self.chipHelp(source, model))
                         }
                     }
                 }
             }
         }
-        .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 8)
+        .padding(.horizontal, 12).padding(.top, 20).padding(.bottom, 8)
     }
 
     var currentSourceName: String { model.sources.first { $0.0 == model.source }?.1 ?? "History" }
@@ -428,12 +488,48 @@ struct QuickPasteView: View {
     func row<Content: View>(_ index: Int, @ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(.vertical, 3).padding(.horizontal, 6)
-            .background(index == model.selection ? Color.accentColor.opacity(0.28) : .clear, in: .rect(cornerRadius: 6))
+            .background(rowColor(index), in: .rect(cornerRadius: 6))
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             .id(index)
-            .onTapGesture(count: 2) { model.selection = index; model.activate(.paste) }
-            .onTapGesture { model.selection = index }
+            .onTapGesture(count: 2) { model.selection = index; model.marked = []; model.activate(.paste) }
+            .onTapGesture { model.click(index) }
+            .contextMenu { rowMenu(index) }
+    }
+
+    func rowColor(_ index: Int) -> Color {
+        let clips = model.source == .snippets || model.filterMode != nil ? [] : model.clips
+        if clips.indices.contains(index), model.marked.contains(clips[index].id) {
+            return Color.accentColor.opacity(index == model.selection ? 0.4 : 0.22)
+        }
+        return index == model.selection ? Color.accentColor.opacity(0.28) : .clear
+    }
+
+    /// Right-click on a clipping: paste, move to a pastebin, and the rest. Acts on the picked
+    /// clippings when the row is one of them, otherwise on that row alone.
+    @ViewBuilder func rowMenu(_ index: Int) -> some View {
+        let clips = model.source == .snippets || model.filterMode != nil ? [] : model.clips
+        if clips.indices.contains(index) {
+            let clip = clips[index]
+            let ids = model.marked.contains(clip.id) ? model.targets : [clip.id]
+            if ids.count == 1 {
+                Button("Paste") { model.selection = index; model.marked = []; model.activate(.paste) }
+                Button("Paste as Plain Text") { model.selection = index; model.marked = []; model.activate(.pastePlain) }
+                Divider()
+            }
+            Menu(ids.count == 1 ? "Move to Pastebin" : "Move \(ids.count) to Pastebin") {
+                ForEach(Array(model.pastebins.enumerated()), id: \.element.id) { n, bin in
+                    Button(n < 9 ? "\(bin.name)    ⌃\(n + 1)" : bin.name) {
+                        if !model.marked.contains(clip.id) { model.marked = []; model.selection = index }
+                        model.moveTargets(to: bin)
+                    }
+                }
+            }
+            Button("Add to Stack") { StackController.shared.add(ids) }
+            Button(clip.pinned ? "Unpin" : "Pin") { ClipStore.shared.setPinned(ids, !clip.pinned) }
+            Divider()
+            Button("Delete", role: .destructive) { ClipStore.shared.delete(ids); model.marked = [] }
+        }
     }
 
     @ViewBuilder var preview: some View {
@@ -463,10 +559,24 @@ struct QuickPasteView: View {
         }
     }
 
+    static func chipHelp(_ source: QuickPasteModel.Source, _ model: QuickPasteModel) -> String {
+        if case .pastebin(let id) = source, let n = model.pastebins.firstIndex(where: { $0.id == id }), n < 9 {
+            return "Show this pastebin. Press ⌃\(n + 1) to move the selected clippings here."
+        }
+        return "Show these clippings"
+    }
+
     var footer: some View {
-        HStack(spacing: 14) {
-            hint("↩", "Paste"); hint("⇧↩", "Plain"); hint("⌘↩", "Filter"); hint("⌥↩", "Type")
-            hint("⇥", "Switch"); hint("⌘S", "Stack"); hint("⌘P", "Pin"); hint("⌘O", "Open")
+        HStack(spacing: 12) {
+            if let notice = model.notice {
+                Label(notice, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            } else if !model.marked.isEmpty {
+                Text("\(model.marked.count) picked").fontWeight(.semibold)
+                hint("⌃1–9", "Move to pastebin"); hint("⌘S", "Stack"); hint("⎋", "Clear")
+            } else {
+                hint("↩", "Paste"); hint("⇧↩", "Plain"); hint("⌘↩", "Filter"); hint("⌥↩", "Type")
+                hint("⇥", "Switch"); hint("⌘-click", "Pick several"); hint("⌃1–9", "Move")
+            }
             Spacer()
         }
         .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 6)
