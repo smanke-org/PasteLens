@@ -68,8 +68,42 @@ struct HotKey: Codable, Equatable, Hashable {
         return s
     }
 
+    /// Builds one from a key code and Carbon modifiers, as caught while recording.
+    init?(keyCode: UInt32, carbonModifiers: UInt32) {
+        var flags: NSEvent.ModifierFlags = []
+        if carbonModifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+        if carbonModifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if carbonModifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        if carbonModifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        guard let name = Self.name(code: Int(keyCode), characters: Self.layoutCharacter(UInt16(keyCode))) else { return nil }
+        self.keyCode = keyCode
+        self.modifiers = carbonModifiers
+        self.display = Self.symbols(flags) + name
+    }
+
+    /// The character a key types on the current keyboard layout, with no modifiers.
+    static func layoutCharacter(_ code: UInt16) -> String? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let data = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
+        return data.withUnsafeBytes { buffer -> String? in
+            guard let layout = buffer.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else { return nil }
+            var dead: UInt32 = 0
+            var length = 0
+            var chars = [UniChar](repeating: 0, count: 4)
+            let status = UCKeyTranslate(layout, code, UInt16(kUCKeyActionDisplay), 0, UInt32(LMGetKbdType()),
+                                        OptionBits(kUCKeyTranslateNoDeadKeysBit), &dead, 4, &length, &chars)
+            guard status == noErr, length > 0 else { return nil }
+            let s = String(utf16CodeUnits: chars, count: length)
+            return s.trimmingCharacters(in: .controlCharacters).isEmpty ? nil : s
+        }
+    }
+
     private static func name(for event: NSEvent) -> String {
-        let code = Int(event.keyCode)
+        name(code: Int(event.keyCode), characters: event.charactersIgnoringModifiers) ?? "?"
+    }
+
+    private static func name(code: Int, characters: String?) -> String? {
         if let f = fKeys[code] { return "F\(f)" }
         switch code {
         case kVK_Return: return "↩"
@@ -80,7 +114,15 @@ struct HotKey: Codable, Equatable, Hashable {
         case kVK_RightArrow: return "→"
         case kVK_UpArrow: return "↑"
         case kVK_DownArrow: return "↓"
-        default: return (event.charactersIgnoringModifiers ?? "?").uppercased()
+        case kVK_Delete: return "⌫"
+        case kVK_ForwardDelete: return "⌦"
+        case kVK_Home: return "↖"
+        case kVK_End: return "↘"
+        case kVK_PageUp: return "⇞"
+        case kVK_PageDown: return "⇟"
+        default:
+            guard let characters, !characters.isEmpty else { return nil }
+            return characters.uppercased()
         }
     }
 
@@ -166,7 +208,7 @@ final class HotKeyCenter {
         targets.removeAll()
     }
 
-    private func installHandlerOnce() {
+    func installHandlerOnce() {
         guard !installed else { return }
         installed = true
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -185,9 +227,61 @@ private func hotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef?, _ d
                                    nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
     guard status == noErr else { return status }
     let value = id.id
+    let signature = id.signature
     // Carbon delivers hot keys on the main thread's event loop.
-    MainActor.assumeIsolated { HotKeyCenter.shared.fire(value) }
+    MainActor.assumeIsolated {
+        if signature == RecordingCatcher.signature { RecordingCatcher.fire(value) } else { HotKeyCenter.shared.fire(value) }
+    }
     return noErr
+}
+
+/// While a shortcut is being recorded, every modifier combination is briefly registered as a
+/// hot key. macOS hands registered hot keys to the app that owns them, even combinations its
+/// own system shortcuts would otherwise swallow before any window sees them (Control-` is one).
+@MainActor
+enum RecordingCatcher {
+    static let signature: OSType = 0x504C_5243 // "PLRC"
+    /// Every mix of ⌃ ⌥ ⇧ ⌘ that includes at least one of ⌃ ⌥ ⌘.
+    static let modifierSets: [UInt32] = (1..<16).compactMap { bits -> UInt32? in
+        var mods: UInt32 = 0
+        if bits & 1 != 0 { mods |= UInt32(controlKey) }
+        if bits & 2 != 0 { mods |= UInt32(optionKey) }
+        if bits & 4 != 0 { mods |= UInt32(shiftKey) }
+        if bits & 8 != 0 { mods |= UInt32(cmdKey) }
+        return mods == UInt32(shiftKey) ? nil : mods
+    }
+    /// Modifier and function keys themselves aren't shortcuts.
+    static let skipped: Set<Int> = [kVK_Command, kVK_Shift, kVK_CapsLock, kVK_Option, kVK_Control, kVK_RightCommand,
+                                    kVK_RightShift, kVK_RightOption, kVK_RightControl, kVK_Function]
+    private static var refs: [EventHotKeyRef] = []
+    private static var onCatch: ((HotKey) -> Void)?
+
+    static func begin(_ caught: @escaping (HotKey) -> Void) {
+        end()
+        onCatch = caught
+        HotKeyCenter.shared.installHandlerOnce()
+        for code in 0..<128 where !skipped.contains(code) {
+            for (index, mods) in modifierSets.enumerated() {
+                var ref: EventHotKeyRef?
+                let id = EventHotKeyID(signature: signature, id: UInt32(code << 4 | index))
+                if RegisterEventHotKey(UInt32(code), mods, id, GetApplicationEventTarget(), 0, &ref) == noErr, let ref {
+                    refs.append(ref)
+                }
+            }
+        }
+    }
+
+    static func end() {
+        for ref in refs { UnregisterEventHotKey(ref) }
+        refs.removeAll()
+        onCatch = nil
+    }
+
+    static func fire(_ id: UInt32) {
+        let code = id >> 4, index = Int(id & 0xF)
+        guard modifierSets.indices.contains(index), let key = HotKey(keyCode: code, carbonModifiers: modifierSets[index]) else { return }
+        onCatch?(key)
+    }
 }
 
 /// Click, then press a shortcut. Esc cancels, Delete clears.
@@ -235,6 +329,13 @@ struct ShortcutRecorder: NSViewRepresentable {
         private func start() {
             recording = true
             HotKeyCenter.shared.unregisterAll()
+            // Combinations with ⌘ ⌥ or ⌃ arrive here, including ones macOS would otherwise keep.
+            RecordingCatcher.begin { [weak self] key in
+                guard let self, self.recording else { return }
+                self.hotKey = key
+                self.onChange?(key)
+                self.stop()
+            }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self else { return event }
                 switch Int(event.keyCode) {
@@ -256,6 +357,7 @@ struct ShortcutRecorder: NSViewRepresentable {
 
         private func stop() {
             recording = false
+            RecordingCatcher.end()
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
             // The binding writes Preferences synchronously, so this sees the new key.
