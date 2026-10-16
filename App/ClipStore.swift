@@ -246,6 +246,7 @@ final class ClipStore {
     func record(_ content: ClipContent, source: (bundleID: String?, name: String?), imageSize: (Int, Int)?,
                 sensitive: SensitiveScanner.Finding?) -> Clipping {
         let now = Date()
+        ActivityStore.shared.record(.copy, at: now)
         let hash = ClipBuilder.hash(content)
         if var existing = db.historyClip(withHash: hash) {
             existing.copiedAt = now

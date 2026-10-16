@@ -197,6 +197,12 @@ public final class ClipDatabase: @unchecked Sendable {
 
     public var totalCount: Int { ((try? scalarInt("SELECT COUNT(*) FROM clips")) ?? nil) ?? 0 }
 
+    /// When each clipping was first copied and on which Mac, to start the Activity graph
+    /// from what's already here.
+    public func copyOrigins() -> [(origin: String, createdAt: Date)] {
+        (try? rows("SELECT meta FROM clips") { Self.decode($0, 0) })?.compactMap { $0 }.map { ($0.origin, $0.createdAt) } ?? []
+    }
+
     /// A page of clippings, newest first.
     public func page(_ filter: Filter, limit: Int, offset: Int = 0) -> [Clipping] {
         let (clause, args) = Self.whereClause(filter)

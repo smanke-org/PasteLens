@@ -28,7 +28,7 @@ let cornerRadius = side * 0.215
 
 let tilePath = CGPath(roundedRect: tile, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
 
-// MARK: - Copper body
+// MARK: - Red body (Wells Fargo red, #D71E28, in the middle)
 
 ctx.saveGState()
 ctx.addPath(tilePath)
@@ -36,8 +36,8 @@ ctx.clip()
 
 let colorSpace = CGColorSpaceCreateDeviceRGB()
 let bodyColors = [
-    NSColor(calibratedRed: 0.99, green: 0.54, blue: 0.24, alpha: 1.0).cgColor,
-    NSColor(calibratedRed: 0.76, green: 0.29, blue: 0.08, alpha: 1.0).cgColor,
+    NSColor(calibratedRed: 0.92, green: 0.13, blue: 0.18, alpha: 1.0).cgColor,
+    NSColor(calibratedRed: 0.76, green: 0.04, blue: 0.10, alpha: 1.0).cgColor,
 ] as CFArray
 let bodyGradient = CGGradient(colorsSpace: colorSpace, colors: bodyColors, locations: [0.0, 1.0])!
 ctx.drawLinearGradient(

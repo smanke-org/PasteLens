@@ -51,6 +51,8 @@ final class SyncEngine {
         var name: String
         var lastSeen: Date
         var appVersion: String
+        /// That Mac's copy and paste counts, for Settings › Activity (1.0.14 and later).
+        var activity: ActivityLog?
     }
 
     private(set) var status: Status = .off
@@ -74,6 +76,7 @@ final class SyncEngine {
     @ObservationIgnored private var pollTimer: Timer?
     @ObservationIgnored private var missingContent: Set<UUID> = []
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var activityPublishScheduled = false
 
     static let containerID = "iCloud.com.smanke.PasteLens"
     @ObservationIgnored private lazy var container = CKContainer(identifier: Self.containerID)
@@ -95,6 +98,7 @@ final class SyncEngine {
     func start() {
         loadOutbox()
         guard enabled else { status = .off; return }
+        loadCachedDevices()
         if !started {
             started = true
             NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { _ in
@@ -117,6 +121,7 @@ final class SyncEngine {
             try await ensureZone()
             let keyring = try await fetchKeyring()
             keyringExists = keyring != nil
+            if devices.isEmpty { loadCachedDevices() }
             guard let keyring, let stored = Keychain.loadKey(), SyncCrypto.keyID(for: stored) == keyring.keyID else {
                 key = nil
                 status = .needsPassphrase
@@ -483,6 +488,13 @@ final class SyncEngine {
             var more = true
             while more {
                 let changes = try await database.recordZoneChanges(inZoneWith: zoneID, since: token)
+                for deletion in changes.deletions where deletion.recordID.recordName.hasPrefix("Device_") {
+                    let id = String(deletion.recordID.recordName.dropFirst(7))
+                    if devices.contains(where: { $0.id == id }) {
+                        devices.removeAll { $0.id == id }
+                        saveCachedDevices()
+                    }
+                }
                 for (_, result) in changes.modificationResultsByID {
                     guard case .success(let modification) = result else { continue }
                     let record = modification.record
@@ -538,6 +550,7 @@ final class SyncEngine {
             devices.removeAll { $0.id == device.id }
             devices.append(device)
             devices.sort { $0.name < $1.name }
+            saveCachedDevices()
             return false
         case "Content":
             guard let asset = record["asset"] as? CKAsset, let url = asset.fileURL, let sealed = try? Data(contentsOf: url),
@@ -665,13 +678,40 @@ final class SyncEngine {
 
     private func publishDevice() async {
         guard let key else { return }
-        let device = Device(id: DeviceIdentity.id, name: DeviceIdentity.name, lastSeen: Date(), appVersion: AppInfo.version)
+        let device = Device(id: DeviceIdentity.id, name: DeviceIdentity.name, lastSeen: Date(), appVersion: AppInfo.version,
+                            activity: ActivityStore.shared.log)
         guard let plain = try? JSONEncoder().encode(device), let sealed = try? SyncCrypto.seal(plain, using: key) else { return }
         let record = baseRecord("Device_\(DeviceIdentity.id)", type: "Device")
         record["data"] = sealed as CKRecordValue
         if let (results, _) = try? await database.modifyRecords(saving: [record], deleting: [], savePolicy: .allKeys, atomically: true) {
             for (_, result) in results { if case .success(let saved) = result { remember(saved) } }
         }
+    }
+
+    /// This Mac's copy or paste counts changed: share them shortly. Counts are whole-day
+    /// totals in this Mac's own record, so a late or repeated save never counts twice.
+    func activityChanged() {
+        guard key != nil, !activityPublishScheduled else { return }
+        activityPublishScheduled = true
+        let delay = ProcessInfo.processInfo.environment["PASTELENS_ACTIVITY_DELAY"].flatMap(Double.init) ?? 30
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            MainActor.assumeIsolated {
+                SyncEngine.shared.activityPublishScheduled = false
+                Task { await SyncEngine.shared.publishDevice() }
+            }
+        }
+    }
+
+    /// The other Macs as last seen. Change fetches only bring what changed, so without this
+    /// a relaunch wouldn't know about Macs that haven't changed since.
+    private func loadCachedDevices() {
+        guard let data = store.db.data(forKey: "ck.devices"),
+              let cached = try? JSONDecoder().decode([Device].self, from: data) else { return }
+        devices = cached.filter { $0.id != DeviceIdentity.id }
+    }
+
+    private func saveCachedDevices() {
+        try? store.db.set(try? JSONEncoder().encode(devices), forKey: "ck.devices")
     }
 
     /// Asks CloudKit to wake PasteLens when another Mac changes something.

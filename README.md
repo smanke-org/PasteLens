@@ -33,6 +33,7 @@ Requires macOS 26 or later.
   - A `pastelens` command-line tool.
   - An MCP server for AI assistants.
   - `pastelens://` URLs.
+- **Activity (Settings › Activity)**: a graph of how many times you copied and pasted, widening from 7 days to a year as you use PasteLens. With sync on, each bar is split by Mac in its own color, and every Mac's totals are listed below. Only numbers are kept, and they sync encrypted like everything else.
 - **Import**: brings over Pastebot clippings, pastebins and `.pastebotfilter` files.
 
 ## Sync and encryption

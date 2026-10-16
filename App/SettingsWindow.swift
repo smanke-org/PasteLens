@@ -45,6 +45,7 @@ final class SettingsTabs: NSTabViewController {
         add("Privacy", "hand.raised", PrivacySettings())
         add("Snippets", "text.badge.plus", SnippetSettings())
         add("Sync", "icloud", SyncSettings())
+        add("Activity", "chart.bar.xaxis", ActivitySettings())
         add("Advanced", "wrench.and.screwdriver", AdvancedSettings())
     }
 

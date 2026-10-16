@@ -78,6 +78,7 @@ enum Paster {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             postKey(keyCode(for: "v") ?? CGKeyCode(kVK_ANSI_V), flags: .maskCommand)
             SoundPlayer.play(.paste)
+            MainActor.assumeIsolated { ActivityStore.shared.record(.paste) }
             if let back = cursorFromEnd, back > 0 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                     for _ in 0..<min(back, 2_000) { postKey(CGKeyCode(kVK_LeftArrow), flags: []) }
@@ -106,6 +107,7 @@ enum Paster {
             if index > 0 { chunks.append("\n") }
             chunks += Array(line).chunked(16).map { String($0) }
         }
+        ActivityStore.shared.record(.paste)
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(150))
             for chunk in chunks {

@@ -435,3 +435,53 @@ import Testing
         #expect(db.data(forKey: "k") == Data("x".utf8))
     }
 }
+
+@Suite struct ActivityTests {
+    var calendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Chicago")!
+        return c
+    }
+    func day(_ y: Int, _ m: Int, _ d: Int, hour: Int = 12) -> Date {
+        calendar.date(from: DateComponents(year: y, month: m, day: d, hour: hour))!
+    }
+
+    @Test func recordsByDayAndKind() {
+        var log = ActivityLog()
+        log.record(.copy, at: day(2026, 10, 14), calendar: calendar)
+        log.record(.copy, at: day(2026, 10, 14, hour: 23), calendar: calendar)
+        log.record(.paste, at: day(2026, 10, 15), calendar: calendar)
+        #expect(log.days["2026-10-14"]?["copy"] == 2)
+        #expect(log.days["2026-10-15"]?["paste"] == 1)
+        #expect(log.lifetime(.copy) == 2 && log.lifetime(.paste) == 1)
+        #expect(log.firstDay == "2026-10-14")
+        // Trimming keeps the lifetime totals and the first day.
+        log.trim(keepDays: 0, now: day(2026, 10, 15), calendar: calendar)
+        #expect(log.days["2026-10-14"] == nil)
+        #expect(log.lifetime(.copy) == 2 && log.firstDay == "2026-10-14")
+    }
+
+    @Test func barsSplitByMac() {
+        var a = ActivityLog(), b = ActivityLog()
+        a.record(.copy, count: 3, at: day(2026, 10, 16), calendar: calendar)
+        b.record(.copy, count: 2, at: day(2026, 10, 16), calendar: calendar)
+        b.record(.paste, count: 5, at: day(2026, 10, 16), calendar: calendar)
+        b.record(.copy, count: 1, at: day(2026, 10, 10), calendar: calendar)
+        let bars = ActivityStats.bars(logs: ["a": a, "b": b], kind: .copy, range: .week, today: day(2026, 10, 16), calendar: calendar)
+        #expect(bars.count == 7)
+        #expect(bars.last?.counts == ["a": 3, "b": 2])
+        #expect(bars.last?.total == 5)
+        #expect(bars.first?.counts == ["b": 1])
+        // Reading the same Mac's record twice replaces it rather than adding to it.
+        let again = ActivityStats.bars(logs: ["a": a, "b": b], kind: .copy, range: .week, today: day(2026, 10, 16), calendar: calendar)
+        #expect(again == bars)
+    }
+
+    @Test func rangeWidensAndOldDevicesDecode() throws {
+        #expect(ActivityStats.range(firstDay: nil, today: day(2026, 10, 16), calendar: calendar) == .week)
+        #expect(ActivityStats.range(firstDay: day(2026, 9, 1), today: day(2026, 10, 16), calendar: calendar) == .quarter)
+        #expect(ActivityLog.earliestFirstDay([ActivityLog(firstDay: "2026-03-01"), ActivityLog(firstDay: "2025-12-31"), ActivityLog()]) == "2025-12-31")
+        let bars = ActivityStats.bars(logs: [:], kind: .paste, range: .year, today: day(2026, 10, 16), calendar: calendar)
+        #expect(bars.count == 12 && bars.allSatisfy { $0.total == 0 })
+    }
+}

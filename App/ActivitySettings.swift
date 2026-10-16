@@ -1,0 +1,269 @@
+import Charts
+import PasteLensKit
+import SwiftUI
+
+/// Settings › Activity: how many times PasteLens copied and pasted over time. The graph
+/// starts at a week and widens to 30, 90 and 180 days, then a year, as days of data build
+/// up. With sync on, each bar is split by Mac, one color per Mac.
+struct ActivitySettings: View {
+    @State private var store = ActivityStore.shared
+    @State private var sync = SyncEngine.shared
+    @State private var hovered: Date?
+    /// Kept on each Mac, not synced.
+    @AppStorage("activity.kind", store: AppDefaults.store) private var kindRaw = ActivityKind.copy.rawValue
+    @AppStorage("activity.showAllMacs", store: AppDefaults.store) private var showAllMacs = true
+
+    /// One Mac on the graph.
+    struct Mac: Identifiable {
+        var id: String
+        var name: String
+        var status: String
+        var log: ActivityLog
+        var color: Color
+    }
+
+    private static let palette: [Color] = [.blue, .orange, .green, .purple, .pink, .teal, .yellow, .brown, .indigo, .mint, .red, .cyan]
+
+    private var kind: ActivityKind { ActivityKind(rawValue: kindRaw) ?? .copy }
+
+    /// This Mac first, then the others by name; each keeps its color as long as the list doesn't change.
+    private var macs: [Mac] {
+        let others = sync.enabled ? sync.devices.filter { $0.activity != nil && $0.id != DeviceIdentity.id } : []
+        var result = [Mac(id: DeviceIdentity.id, name: DeviceIdentity.name, status: "This Mac", log: store.log, color: Self.palette[0])]
+        for (index, device) in others.enumerated() {
+            result.append(Mac(id: device.id, name: device.name,
+                              status: "Synced \(device.lastSeen.formatted(.relative(presentation: .named)))",
+                              log: device.activity ?? ActivityLog(), color: Self.palette[(index + 1) % Self.palette.count]))
+        }
+        return result
+    }
+
+    var body: some View {
+        let now = Date()
+        let everyMac = macs
+        let allMacs = showAllMacs && everyMac.count > 1
+        let shown = allMacs ? everyMac : Array(everyMac.prefix(1))
+        let firstDay = ActivityLog.earliestFirstDay(shown.map(\.log)).flatMap { ActivityLog.date(for: $0) }
+        let range = ActivityStats.range(firstDay: firstDay, today: now)
+        let bars = ActivityStats.bars(logs: Dictionary(uniqueKeysWithValues: shown.map { ($0.id, $0.log) }), kind: kind,
+                                      range: range, today: now)
+        let total = bars.map(\.total).reduce(0, +)
+        let hoveredBar = hovered.flatMap { date in bars.first { date >= $0.start && date < $0.end } }
+
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Picker("Count", selection: $kindRaw) {
+                            Text("Copies").tag(ActivityKind.copy.rawValue)
+                            Text("Pastes").tag(ActivityKind.paste.rawValue)
+                        }
+                        .pickerStyle(.segmented).labelsHidden().fixedSize()
+                        Spacer()
+                        if everyMac.count > 1 {
+                            Picker("Show", selection: $showAllMacs) {
+                                Text("This Mac").tag(false)
+                                Text("All Macs").tag(true)
+                            }
+                            .pickerStyle(.segmented).labelsHidden().fixedSize()
+                        }
+                    }
+                    .padding(.bottom, 8)
+
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(total, format: .number)
+                            .font(.system(size: 34, weight: .semibold))
+                            .monospacedDigit()
+                        Text("\(noun(total)) in the \(range.title)\(everyMac.count == 1 ? "" : allMacs ? " on \(everyMac.count) Macs" : " on this Mac")")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    chart(bars, macs: shown, range: range, hovered: hoveredBar)
+                        .frame(height: 190)
+                        .padding(.top, 10)
+
+                    if shown.count > 1 { legend(shown) }
+
+                    Text(hoveredBar.map { readout($0, macs: shown, range: range) } ?? "Hover over a bar to see its count.")
+                        .font(.callout)
+                        .monospacedDigit()
+                        .foregroundStyle(hoveredBar == nil ? .tertiary : .primary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .padding(.vertical, 4)
+            } footer: {
+                Text("The graph widens as you use PasteLens: 7 days at first, then 30, 90 and 180 days, then a year. Pastes are the ones PasteLens makes, from Quick Paste, History, the menu, Stack, snippets, Shortcuts and the command line. Only the numbers are kept, never what you copied, and clearing History doesn't reset them.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            macsSection(everyMac)
+        }
+        .formStyle(.grouped)
+        .onAppear { if sync.enabled { sync.pull() } }
+    }
+
+    /// Every Mac's copies and pastes since it started counting.
+    @ViewBuilder
+    private func macsSection(_ macs: [Mac]) -> some View {
+        Section {
+            ForEach(macs) { mac in
+                LabeledContent {
+                    Text("\(mac.log.lifetime(.copy).formatted()) copied · \(mac.log.lifetime(.paste).formatted()) pasted")
+                        .monospacedDigit()
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(mac.color).frame(width: 9, height: 9)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(mac.name)
+                            Text(mac.status).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        } header: {
+            HStack {
+                Text(macs.count > 1 ? "All Macs" : "This Mac")
+                Spacer()
+                if macs.count > 1 {
+                    let copies = macs.map { $0.log.lifetime(.copy) }.reduce(0, +)
+                    let pastes = macs.map { $0.log.lifetime(.paste) }.reduce(0, +)
+                    Text("\(copies.formatted()) copied · \(pastes.formatted()) pasted").monospacedDigit()
+                }
+            }
+        } footer: {
+            Group {
+                if !sync.enabled {
+                    Text("Turn on sync to see copies and pastes from every Mac that uses PasteLens, each in its own color.")
+                } else if macs.count == 1 {
+                    Text("Your other Macs appear here once they run PasteLens 1.0.14 or later with sync on.")
+                } else {
+                    Text("Each Mac's totals since PasteLens started counting there. Counts travel encrypted with the rest of your synced data.")
+                }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func legend(_ macs: [Mac]) -> some View {
+        HStack(spacing: 14) {
+            ForEach(macs) { mac in
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 2).fill(mac.color).frame(width: 10, height: 10)
+                    Text(mac.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// One segment of a stacked bar.
+    private struct Segment: Identifiable {
+        var bar: StatsBar
+        var mac: Mac
+        var from: Int
+        var to: Int
+        var isTop: Bool
+        var id: String { "\(bar.start.timeIntervalSince1970)-\(mac.id)" }
+    }
+
+    private func segments(_ bars: [StatsBar], macs: [Mac]) -> [Segment] {
+        var result: [Segment] = []
+        for bar in bars {
+            var base = 0
+            let present = macs.filter { (bar.counts[$0.id] ?? 0) > 0 }
+            for (index, mac) in present.enumerated() {
+                let count = bar.counts[mac.id] ?? 0
+                result.append(Segment(bar: bar, mac: mac, from: base, to: base + count, isTop: index == present.count - 1))
+                base += count
+            }
+        }
+        return result
+    }
+
+    @ViewBuilder
+    private func chart(_ bars: [StatsBar], macs: [Mac], range: StatsRange, hovered: StatsBar?) -> some View {
+        let peak = bars.map(\.total).max() ?? 0
+        Chart(segments(bars, macs: macs)) { segment in
+            // A ranged bar spans exactly its days; trimming each end leaves a gap between bars.
+            let gap = segment.bar.end.timeIntervalSince(segment.bar.start) * 0.12
+            RectangleMark(xStart: .value("From", segment.bar.start.addingTimeInterval(gap)),
+                          xEnd: .value("To", segment.bar.end.addingTimeInterval(-gap)),
+                          yStart: .value("Count", segment.from), yEnd: .value("Count", segment.to))
+                .foregroundStyle(segment.mac.color.opacity(hovered == nil || hovered == segment.bar ? 1 : 0.4))
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: segment.isTop ? 4 : 0, topTrailingRadius: segment.isTop ? 4 : 0))
+                .accessibilityLabel(readout(segment.bar, macs: macs, range: range))
+        }
+        .chartXScale(domain: (bars.first?.start ?? Date())...(bars.last?.end ?? Date()))
+        .chartXSelection(value: $hovered)
+        .chartYScale(domain: 0...max(peak, 4))
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { _ in
+                AxisGridLine().foregroundStyle(Color.secondary.opacity(0.25))
+                AxisValueLabel().foregroundStyle(Color.secondary)
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: xTicks(bars, range: range)) { value in
+                AxisValueLabel(centered: false) {
+                    if let date = value.as(Date.self) { Text(axisLabel(date, range: range)) }
+                }
+                .foregroundStyle(Color.secondary)
+            }
+        }
+        .overlay {
+            if peak == 0 {
+                Text(kind == .copy ? "Nothing copied yet." : "Nothing pasted yet. Press \(Preferences.shared.hotKey(.quickPaste)?.display ?? "the Quick Paste shortcut") to paste from History.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .padding(8)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 6))
+            }
+        }
+    }
+
+    /// Where the x-axis labels go: every day for a week, then about six evenly spaced ticks.
+    private func xTicks(_ bars: [StatsBar], range: StatsRange) -> [Date] {
+        guard !bars.isEmpty else { return [] }
+        let step: Int
+        switch range {
+        case .week: step = 1
+        case .month: step = 5
+        case .quarter: step = 2
+        case .halfYear: step = 4
+        case .year: step = 2
+        }
+        // Counted from the left, and never on the last bar, whose label would run off the edge.
+        let last = range == .week ? bars.count - 1 : bars.count - 2
+        return stride(from: 0, through: last, by: step).map { bars[$0].start }
+    }
+
+    private func axisLabel(_ date: Date, range: StatsRange) -> String {
+        switch range {
+        case .week: date.formatted(.dateTime.weekday(.abbreviated))
+        case .month, .quarter, .halfYear: date.formatted(.dateTime.month(.abbreviated).day())
+        case .year: date.formatted(.dateTime.month(.abbreviated))
+        }
+    }
+
+    private func noun(_ count: Int) -> String {
+        switch kind {
+        case .copy: count == 1 ? "copy" : "copies"
+        case .paste: count == 1 ? "paste" : "pastes"
+        }
+    }
+
+    private func readout(_ bar: StatsBar, macs: [Mac], range: StatsRange) -> String {
+        let lastDay = bar.end.addingTimeInterval(-1)
+        let when: String
+        switch range.bucket {
+        case .day: when = bar.start.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+        case .week: when = "\(bar.start.formatted(.dateTime.month(.abbreviated).day())) – \(lastDay.formatted(.dateTime.month(.abbreviated).day()))"
+        case .month: when = bar.start.formatted(.dateTime.month(.wide).year())
+        }
+        var text = "\(when): \(bar.total.formatted()) \(noun(bar.total))"
+        if macs.count > 1, bar.total > 0 {
+            let parts = macs.compactMap { mac in (bar.counts[mac.id] ?? 0) > 0 ? "\(mac.name) \(bar.counts[mac.id]!.formatted())" : nil }
+            text += " (\(parts.joined(separator: ", ")))"
+        }
+        return text
+    }
+}

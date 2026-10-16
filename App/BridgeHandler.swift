@@ -179,6 +179,16 @@ enum BridgeHandler {
             let sync = SyncEngine.shared
             return ["status": sync.status.summary, "devices": sync.devices.map(\.name), "pending": sync.pendingContent,
                     "clippings": store.db.totalCount, "hasContent": store.db.ids(.all).filter { store.hasContent($0) }.count]
+        case "debug-activity":
+            // Adds counts on a past day, and reports what every Mac has shared.
+            if let kind = args["kind"].flatMap(ActivityKind.init(rawValue:)) {
+                let date = Date().addingTimeInterval(-(args["days-ago"].flatMap(Double.init) ?? 0) * 86_400)
+                for _ in 0..<(args["count"].flatMap(Int.init) ?? 1) { ActivityStore.shared.record(kind, at: date) }
+            }
+            let log = ActivityStore.shared.log
+            return ["copies": log.lifetime(.copy), "pastes": log.lifetime(.paste), "firstDay": log.firstDay ?? "",
+                    "macs": SyncEngine.shared.devices.map { ["name": $0.name, "copies": $0.activity?.lifetime(.copy) ?? -1,
+                                                             "pastes": $0.activity?.lifetime(.paste) ?? -1] }]
         case "debug-show":
             switch args["window"] ?? "" {
             case "quickpaste": QuickPastePanel.shared.show()
