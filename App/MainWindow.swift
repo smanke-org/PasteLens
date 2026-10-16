@@ -10,9 +10,13 @@ final class MainWindow: NSObject, NSWindowDelegate {
     static let shared = MainWindow()
     private var window: NSWindow?
     let state = MainState()
+    /// The app that was in front when the window opened: pasting goes back to it.
+    private var previousApp: NSRunningApplication?
+    private var resignObserver: Any?
 
     func show(selecting clip: UUID? = nil) {
         Activity.shared.touch()
+        if let front = NSWorkspace.shared.frontmostApplication, front != .current { previousApp = front }
         if window == nil {
             let window = EscapeClosingWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 680),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -24,6 +28,12 @@ final class MainWindow: NSObject, NSWindowDelegate {
             window.setFrameAutosaveName("PasteLensMain")
             if !window.setFrameUsingName("PasteLensMain") { window.center() }
             self.window = window
+            // Clicking into another app closes the window, like a menu. Other PasteLens
+            // windows (Settings, a sheet, an Open panel) don't count.
+            resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification,
+                                                                    object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { MainWindow.shared.closeIfOpen() }
+            }
         }
         if let clip {
             state.section = .clips(.history)
@@ -31,6 +41,25 @@ final class MainWindow: NSObject, NSWindowDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func closeIfOpen() {
+        guard let window, window.isVisible, window.attachedSheet == nil else { return }
+        window.orderOut(nil)
+    }
+
+    /// Pastes a clipping into whatever had focus before the window opened, and closes the window.
+    func paste(_ clip: Clipping, plain: Bool = false) {
+        guard Paster.copy(clip, plain: plain) else { return }
+        window?.orderOut(nil)
+        let target = previousApp
+        // Hand focus back first, so the paste lands in that app's field, not here.
+        if let target, !target.isTerminated {
+            target.activate()
+        } else {
+            NSApp.hide(nil)
+        }
+        Paster.pasteClipboard(after: 0.25)
     }
 }
 
@@ -212,8 +241,14 @@ struct ClipList: View {
                     .onAppear { if clip.id == items.last?.id, items.count >= limit { limit += 200 } }
                     .tag(clip.id)
                     .draggable(dragText(clip))
-                    .contextMenu { ClipMenu(ids: menuTargets(clip), scope: scope, shortcutFor: $shortcutFor) }
             }
+        }
+        // Right-click for the menu; double-click pastes into the app that was in front.
+        .contextMenu(forSelectionType: UUID.self) { ids in
+            ClipMenu(ids: ordered(ids), scope: scope, shortcutFor: $shortcutFor)
+        } primaryAction: { ids in
+            guard ids.count == 1, let id = ids.first, let clip = store.clip(id) else { return }
+            MainWindow.shared.paste(clip)
         }
         .searchable(text: $state.query, placement: .toolbar, prompt: "Search")
         .onChange(of: state.query) { limit = 200 }
@@ -333,6 +368,9 @@ struct ClipMenu: View {
 
     var body: some View {
         if ids.count == 1, let clip = clips.first {
+            Button("Paste") { MainWindow.shared.paste(clip) }
+            Button("Paste as Plain Text") { MainWindow.shared.paste(clip, plain: true) }
+            Divider()
             Button("Copy") { _ = Paster.copy(clip) }
             Button("Copy as Plain Text") { _ = Paster.copy(clip, plain: true) }
             if let ocr = clip.ocrText, !ocr.isEmpty { Button("Copy Text in Image") { Paster.write(text: ocr) } }
