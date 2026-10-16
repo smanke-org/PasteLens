@@ -208,6 +208,7 @@ enum BridgeHandler {
             case "main": MainWindow.shared.state.section = .clips(.history); MainWindow.shared.state.query = ""; MainWindow.shared.show()
             case "filters": MainWindow.shared.state.section = .filters; MainWindow.shared.state.query = ""; MainWindow.shared.show()
             case "snippets": MainWindow.shared.state.section = .snippets; MainWindow.shared.state.query = ""; MainWindow.shared.show()
+            case "activity": MainWindow.shared.state.section = .activity; MainWindow.shared.state.activityMac = args["mac"]; MainWindow.shared.show()
             case "stack": StackWindow.shared.show()
             case "welcome": WelcomeWindow.shared.show()
             case "close": NSApp.windows.forEach { $0.orderOut(nil) }

@@ -95,8 +95,11 @@ final class MainState {
         case clips(ClipStore.Scope)
         case snippets
         case filters
+        case activity
     }
     var section: Section = .clips(.history) { didSet { selection = [] } }
+    /// The Mac whose activity is shown; nil shows every Mac.
+    var activityMac: String?
     var selection: Set<UUID> = []
     var query = ""
     var editingPastebin: Pastebin?
@@ -117,6 +120,7 @@ struct MainView: View {
                 case .clips(let scope): ClipList(state: state, scope: scope)
                 case .snippets: SnippetList(state: state)
                 case .filters: FilterList(state: state)
+                case .activity: ActivityMacList(state: state)
                 }
             }
             .navigationSplitViewColumnWidth(min: 280, ideal: 360)
@@ -151,6 +155,8 @@ struct MainView: View {
                 ContentUnavailableView("No Filter Selected", systemImage: "camera.filters",
                                        description: Text("Filters transform text before you paste it. Press ⌘↩ in Quick Paste to use one."))
             }
+        case .activity:
+            ActivityDetail(state: state)
         }
     }
 }
@@ -207,6 +213,7 @@ struct Sidebar: View {
             Section("Tools") {
                 label("Snippets", "text.badge.plus", count: store.library.snippets.count).tag(MainState.Section.snippets)
                 label("Filters", "camera.filters", count: store.library.filters.count).tag(MainState.Section.filters)
+                label("Activity", "chart.bar.xaxis", count: nil).tag(MainState.Section.activity)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
