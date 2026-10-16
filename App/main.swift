@@ -174,6 +174,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func mainMenu() -> NSMenu {
         let menu = AppPresence.mainMenu(appName: AppInfo.name, settingsTitle: "Settings…", target: self, settings: #selector(showSettings))
+        // Right below About in the app menu.
+        let otherApps = NSMenuItem(title: "Our other apps…", action: #selector(showOtherApps), keyEquivalent: "")
+        otherApps.target = self
+        menu.items.first?.submenu?.insertItem(otherApps, at: 1)
         // Edit menu, so text fields get copy, paste and undo.
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
@@ -274,6 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         #endif
         menu.addItem(item("About \(AppInfo.name)", #selector(showAbout)))
+        menu.addItem(item("Our other apps…", #selector(showOtherApps)))
         menu.addItem(.separator())
         let version = NSMenuItem(title: "\(AppInfo.name) \(AppInfo.displayVersion)", action: nil, keyEquivalent: "")
         version.isEnabled = false
@@ -312,6 +317,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func installUpdateNow() { AutoUpdater.shared.installNow() }
     #endif
     @objc func quit() { NSApp.terminate(nil) }
+    /// The developer's site, which lists every app.
+    @objc func showOtherApps() {
+        if let url = URL(string: "https://stevemanke.com/") { NSWorkspace.shared.open(url) }
+    }
     @objc func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(nil)
