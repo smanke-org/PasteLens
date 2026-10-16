@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let newInstall = !UserDefaults.standard.bool(forKey: "welcomed")
 
         _ = ClipStore.shared
+        PasswordApps.addInstalled()
         ClipboardMonitor.shared.start()
         HotKeyCenter.shared.perform = { [weak self] target in self?.perform(target) }
         HotKeyCenter.shared.apply()
@@ -34,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { SyncEngine.shared.pull() }
+        }
+        // A password manager installed later is picked up the first time it runs.
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { note in
+            let id = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
+            MainActor.assumeIsolated { if let id, PasswordApps.known.contains(id) { PasswordApps.addInstalled() } }
         }
 
         // Expired secrets and history limits are checked every minute.

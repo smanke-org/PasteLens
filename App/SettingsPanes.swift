@@ -174,7 +174,7 @@ struct HistorySettings: View {
                 }
                 Button("Add App…", action: addApp)
             } header: { Text("Ignore copies from these apps") } footer: {
-                Text("Password managers that mark what they copy as private (1Password, Bitwarden and others) are already ignored.").font(.caption).foregroundStyle(.secondary)
+                Text("Password managers on this Mac (1Password, Passwords, Keychain Access, Bitwarden and others) are added here automatically. Copies that any app marks as private are never recorded either.").font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 LabeledContent("Everything in History") { Button("Clear History…") { confirmClear = true } }
