@@ -201,6 +201,7 @@ enum BridgeHandler {
                 if let name = args["filter-name"], let i = model.filters.firstIndex(where: { $0.name == name }) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { model.selection = i }
                 }
+                if args["retina"] == "true" { moveWindowsToRetinaScreen() }
                 return ["ok": true]
             case "quickpaste-source":
                 QuickPastePanel.shared.show()
@@ -214,6 +215,7 @@ enum BridgeHandler {
             case "close": NSApp.windows.forEach { $0.orderOut(nil) }
             default: SettingsWindow.shared.show(tab: args["window"])
             }
+            if args["retina"] == "true" { moveWindowsToRetinaScreen() }
             if let id = args["select"].flatMap(UUID.init(uuidString:)) { MainWindow.shared.state.selection = [id] }
             if let name = args["select-filter"], let f = store.filter(named: name) { MainWindow.shared.state.selection = [f.id] }
             if let name = args["select-snippet"], let sn = store.library.snippets.first(where: { $0.name == name }) { MainWindow.shared.state.selection = [sn.id] }
@@ -358,6 +360,19 @@ enum BridgeHandler {
             throw Bridge.Failure("Unknown command: \(command)")
         }
     }
+
+    #if DEBUG
+    /// Screenshots: moves the shown windows to the first Retina screen, centered, so they're captured at 2×.
+    private static func moveWindowsToRetinaScreen() {
+        guard let screen = NSScreen.screens.first(where: { $0.backingScaleFactor >= 2 }) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            for window in NSApp.windows where window.isVisible && window.frame.width > 100 {
+                let area = screen.visibleFrame
+                window.setFrameOrigin(NSPoint(x: area.midX - window.frame.width / 2, y: area.midY - window.frame.height / 2))
+            }
+        }
+    }
+    #endif
 
     static func describe(_ clip: Clipping) -> [String: Any] {
         let iso = ISO8601DateFormatter()
