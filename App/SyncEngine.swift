@@ -370,7 +370,7 @@ final class SyncEngine {
             saveOutbox()
         }
         lastSync = Date()
-        status = .idle
+        if case .syncing = status { status = .idle }
     }
 
     /// The clipping's bytes as a sealed asset, if they haven't gone up since they last changed.
@@ -390,13 +390,15 @@ final class SyncEngine {
     }
 
     /// Saves records, resolving conflicts by keeping whichever version changed last.
-    /// Returns false when the batch should be retried later.
+    /// Returns false when the batch should be retried later: a record that failed for any
+    /// other reason stays queued, and the reason shows in Settings rather than "Up to date".
     private func save(_ records: [CKRecord], deleting: [CKRecord.ID]) async -> Bool {
         guard !records.isEmpty || !deleting.isEmpty else { return true }
         do {
             let (saveResults, _) = try await database.modifyRecords(saving: records, deleting: deleting,
                                                                     savePolicy: .ifServerRecordUnchanged, atomically: false)
             var retry: [CKRecord] = []
+            var failure: String?
             for (id, result) in saveResults {
                 switch result {
                 case .success(let saved):
@@ -415,10 +417,19 @@ final class SyncEngine {
                         return false
                     } else {
                         NSLog("PasteLens: sync couldn't save \(id.recordName): \(ck.localizedDescription)")
+                        failure = describe(ck)
                     }
                 }
             }
-            if !retry.isEmpty { return await save(retry, deleting: []) }
+            if !retry.isEmpty, !(await save(retry, deleting: [])) { return false }
+            if let failure {
+                status = .failed(failure)
+                // Try again in a while; the records stay in the outbox until they go up.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 300) {
+                    MainActor.assumeIsolated { SyncEngine.shared.schedulePush(after: 0) }
+                }
+                return false
+            }
             return true
         } catch {
             status = .failed(describe(error))
@@ -671,6 +682,8 @@ final class SyncEngine {
         case .notAuthenticated: return "Sign in to iCloud in System Settings to sync."
         case .serviceUnavailable, .requestRateLimited, .zoneBusy: return "iCloud is busy. PasteLens will try again shortly."
         case .missingEntitlement, .badContainer: return "This copy of PasteLens isn't set up for iCloud."
+        case .invalidArguments where ck.localizedDescription.contains("production schema"):
+            return "iCloud isn't ready for PasteLens yet. It will keep trying."
         default: return ck.localizedDescription
         }
     }

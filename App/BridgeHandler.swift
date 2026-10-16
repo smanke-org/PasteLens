@@ -244,6 +244,10 @@ enum BridgeHandler {
             r["db_bytes"] = (try? FileManager.default.attributesOfItem(atPath: store.folder.appendingPathComponent("PasteLens.sqlite").path)[.size] as? Int) ?? 0
             return r
 
+        case "debug-sync-delete":
+            SyncEngine.shared.deleteCloudData()
+            try? await Task.sleep(for: .seconds(3))
+            return ["ok": true]
         case "debug-sync-pull":
             SyncEngine.shared.pull()
             return ["ok": true]
