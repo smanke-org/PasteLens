@@ -25,6 +25,7 @@ final class Preferences {
         static let alwaysPlain = "paste.alwaysPlain"
         static let releaseToPaste = "paste.releaseToPaste"
         static let moveToTop = "paste.moveToTop"
+        static let windowPaste = "historyWindow.pasteWith"
         static let rowLines = "quickPaste.rowLines"
         static let quickPasteAtMouse = "quickPaste.atMouse"
         static let quickPasteCount = "quickPaste.visibleRows"
@@ -43,7 +44,7 @@ final class Preferences {
     /// bar choices stay per Mac.
     static let syncedKeys: [String] = [
         Key.maxClippings, Key.maxDays, Key.unlimited, Key.maxClipMB, Key.ignoredApps, Key.captureImages, Key.captureFiles,
-        Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
+        Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.windowPaste, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
         Key.sounds, Key.detectSensitive, Key.sensitiveMinutes, Key.ocr, Key.linkPreviews, Key.expansion,
         Key.syncMaxClipMB, "updatePolicy",
     ] + HotKeyAction.allCases.map { Key.hotKeyPrefix + $0.rawValue }
@@ -65,6 +66,8 @@ final class Preferences {
     var alwaysPlain: Bool { didSet { save(Key.alwaysPlain, alwaysPlain) } }
     var releaseToPaste: Bool { didSet { save(Key.releaseToPaste, releaseToPaste) } }
     var moveToTop: Bool { didSet { save(Key.moveToTop, moveToTop) } }
+    /// How a clipping is pasted from the history window: double-click, the right-click menu, or both.
+    var windowPaste: WindowPaste { didSet { save(Key.windowPaste, windowPaste.rawValue) } }
     var rowLines: Int { didSet { save(Key.rowLines, rowLines) } }
     var quickPasteAtMouse: Bool { didSet { save(Key.quickPasteAtMouse, quickPasteAtMouse) } }
     var quickPasteCount: Int { didSet { save(Key.quickPasteCount, quickPasteCount) } }
@@ -100,7 +103,7 @@ final class Preferences {
         defaults.register(defaults: [
             Key.maxClippings: 1_000, Key.maxDays: 0, Key.unlimited: false, Key.maxClipMB: 50.0, Key.ignoredApps: [String](),
             Key.captureImages: true, Key.captureFiles: true, Key.alwaysPlain: false, Key.releaseToPaste: false,
-            Key.moveToTop: true, Key.rowLines: 1, Key.quickPasteAtMouse: true, Key.quickPasteCount: 9, Key.sounds: true,
+            Key.moveToTop: true, Key.windowPaste: WindowPaste.both.rawValue, Key.rowLines: 1, Key.quickPasteAtMouse: true, Key.quickPasteCount: 9, Key.sounds: true,
             Key.detectSensitive: true, Key.sensitiveMinutes: 2, Key.ocr: true, Key.linkPreviews: true, Key.expansion: false,
             Key.syncContents: true, Key.syncMaxClipMB: 25.0,
         ])
@@ -115,6 +118,7 @@ final class Preferences {
         alwaysPlain = defaults.bool(forKey: Key.alwaysPlain)
         releaseToPaste = defaults.bool(forKey: Key.releaseToPaste)
         moveToTop = defaults.bool(forKey: Key.moveToTop)
+        windowPaste = WindowPaste(rawValue: defaults.string(forKey: Key.windowPaste) ?? "") ?? .both
         rowLines = defaults.integer(forKey: Key.rowLines)
         quickPasteAtMouse = defaults.bool(forKey: Key.quickPasteAtMouse)
         quickPasteCount = defaults.integer(forKey: Key.quickPasteCount)
@@ -171,6 +175,8 @@ final class Preferences {
         if alwaysPlain != fresh.alwaysPlain { alwaysPlain = fresh.alwaysPlain }
         if releaseToPaste != fresh.releaseToPaste { releaseToPaste = fresh.releaseToPaste }
         if moveToTop != fresh.moveToTop { moveToTop = fresh.moveToTop }
+        let freshPaste = WindowPaste(rawValue: defaults.string(forKey: Key.windowPaste) ?? "") ?? .both
+        if windowPaste != freshPaste { windowPaste = freshPaste }
         if rowLines != fresh.rowLines { rowLines = fresh.rowLines }
         if quickPasteAtMouse != fresh.quickPasteAtMouse { quickPasteAtMouse = fresh.quickPasteAtMouse }
         if quickPasteCount != fresh.quickPasteCount { quickPasteCount = fresh.quickPasteCount }
@@ -211,6 +217,21 @@ final class Preferences {
         reloadFromDefaults()
         for key in Self.syncedKeys { stamp(key) }
     }
+}
+
+/// How the history window pastes a clipping into the app that was in front.
+enum WindowPaste: String, CaseIterable, Identifiable {
+    case doubleClick, rightClick, both
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .doubleClick: "Double-click"
+        case .rightClick: "Right-click menu"
+        case .both: "Double-click and right-click menu"
+        }
+    }
+    var onDoubleClick: Bool { self != .rightClick }
+    var inMenu: Bool { self != .doubleClick }
 }
 
 /// The global shortcuts PasteLens offers.

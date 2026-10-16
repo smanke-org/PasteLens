@@ -247,7 +247,8 @@ struct ClipList: View {
         .contextMenu(forSelectionType: UUID.self) { ids in
             ClipMenu(ids: ordered(ids), scope: scope, shortcutFor: $shortcutFor)
         } primaryAction: { ids in
-            guard ids.count == 1, let id = ids.first, let clip = store.clip(id) else { return }
+            guard Preferences.shared.windowPaste.onDoubleClick,
+                  ids.count == 1, let id = ids.first, let clip = store.clip(id) else { return }
             MainWindow.shared.paste(clip)
         }
         .searchable(text: $state.query, placement: .toolbar, prompt: "Search")
@@ -368,9 +369,11 @@ struct ClipMenu: View {
 
     var body: some View {
         if ids.count == 1, let clip = clips.first {
-            Button("Paste") { MainWindow.shared.paste(clip) }
-            Button("Paste as Plain Text") { MainWindow.shared.paste(clip, plain: true) }
-            Divider()
+            if Preferences.shared.windowPaste.inMenu {
+                Button("Paste") { MainWindow.shared.paste(clip) }
+                Button("Paste as Plain Text") { MainWindow.shared.paste(clip, plain: true) }
+                Divider()
+            }
             Button("Copy") { _ = Paster.copy(clip) }
             Button("Copy as Plain Text") { _ = Paster.copy(clip, plain: true) }
             if let ocr = clip.ocrText, !ocr.isEmpty { Button("Copy Text in Image") { Paster.write(text: ocr) } }

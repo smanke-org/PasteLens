@@ -159,6 +159,14 @@ struct HistorySettings: View {
             .onChange(of: prefs.maxClippings) { store.pruneHistory() }
             .onChange(of: prefs.maxDays) { store.pruneHistory() }
             .onChange(of: prefs.unlimited) { store.pruneHistory() }
+            Section {
+                Picker("Paste a clipping with", selection: $prefs.windowPaste) {
+                    ForEach(WindowPaste.allCases) { Text($0.title).tag($0) }
+                }
+            } header: { Text("History window") } footer: {
+                Text("Pastes into the app you were using when you opened the window, then closes the window.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Record") {
                 Toggle("Images", isOn: $prefs.captureImages)
                 Toggle("Files and folders", isOn: $prefs.captureFiles)
