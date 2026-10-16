@@ -148,8 +148,28 @@ enum BridgeHandler {
                 guard let id = UUID(uuidString: raw), store.library.pastebins.contains(where: { $0.id == id }) else { throw Bridge.Failure("Pastebin not found: \(raw)") }
                 bins = [id]
             }
-            let new = store.add(.text(args["text"] ?? ""), title: args["title"], source: (nil, "pastelens"), pastebins: bins)
-            return describe(new)
+            var source: (String?, String?) = (nil, "pastelens")
+            #if DEBUG
+            // Staging screenshots: pretend the clipping came from another app.
+            if let bundle = args["source-bundle"], let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
+                source = (bundle, FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
+            }
+            #endif
+            var content = ClipContent.text(args["text"] ?? "")
+            #if DEBUG
+            if let path = args["image-path"], let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
+                content = ClipContent(representations: [ClipRepresentation(type: UTI.png, data: data)])
+            }
+            #endif
+            let new = store.add(content, title: args["title"], source: source, pastebins: bins)
+            if let minutes = args["minutes-ago"].flatMap(Double.init) {
+                store.update(new.id) { $0.copiedAt = Date().addingTimeInterval(-minutes * 60); $0.createdAt = $0.copiedAt }
+            }
+            if args["pin"] == "true" { store.setPinned([new.id], true) }
+            if args["secret"] == "true" {
+                store.update(new.id) { $0.sensitive = true; $0.title = "API key or token"; $0.expiresAt = Date().addingTimeInterval(120) }
+            }
+            return describe(store.clip(new.id) ?? new)
 
         #if DEBUG
         case "debug-sync-setup":
@@ -162,15 +182,37 @@ enum BridgeHandler {
         case "debug-show":
             switch args["window"] ?? "" {
             case "quickpaste": QuickPastePanel.shared.show()
-            case "main": MainWindow.shared.show()
-            case "filters": MainWindow.shared.state.section = .filters; MainWindow.shared.show()
-            case "snippets": MainWindow.shared.state.section = .snippets; MainWindow.shared.show()
+            case "quickpaste-filter":
+                QuickPastePanel.shared.show()
+                let model = QuickPastePanel.shared.model
+                if let index = args["index"].flatMap(Int.init) { model.selection = index }
+                model.filterMode = model.selectedClip
+                // After the search field settles, since focusing it resets the selection.
+                if let name = args["filter-name"], let i = model.filters.firstIndex(where: { $0.name == name }) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { model.selection = i }
+                }
+                return ["ok": true]
+            case "quickpaste-source":
+                QuickPastePanel.shared.show()
+                if args["source"] == "snippets" { QuickPastePanel.shared.model.source = .snippets }
+            case "main": MainWindow.shared.state.section = .clips(.history); MainWindow.shared.state.query = ""; MainWindow.shared.show()
+            case "filters": MainWindow.shared.state.section = .filters; MainWindow.shared.state.query = ""; MainWindow.shared.show()
+            case "snippets": MainWindow.shared.state.section = .snippets; MainWindow.shared.state.query = ""; MainWindow.shared.show()
             case "stack": StackWindow.shared.show()
             case "welcome": WelcomeWindow.shared.show()
             case "close": NSApp.windows.forEach { $0.orderOut(nil) }
             default: SettingsWindow.shared.show(tab: args["window"])
             }
             if let id = args["select"].flatMap(UUID.init(uuidString:)) { MainWindow.shared.state.selection = [id] }
+            if let name = args["select-filter"], let f = store.filter(named: name) { MainWindow.shared.state.selection = [f.id] }
+            if let name = args["select-snippet"], let sn = store.library.snippets.first(where: { $0.name == name }) { MainWindow.shared.state.selection = [sn.id] }
+            if let q = args["query"] { MainWindow.shared.state.query = q }
+            if let size = args["size"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2,
+               let window = NSApp.windows.first(where: { $0.isVisible && $0.title != "" && !($0 is NSPanel) }) {
+                var frame = window.frame
+                frame.size = NSSize(width: size[0], height: size[1])
+                window.setFrame(frame, display: true)
+            }
             return ["ok": true]
         case "debug-sync-pull":
             SyncEngine.shared.pull()

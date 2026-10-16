@@ -432,6 +432,10 @@ struct QuickPasteView: View {
                 ScrollView {
                     Group {
                         if let error = model.filterError { Text(error).foregroundStyle(.red) }
+                        else if model.filterMode?.sensitive == true {
+                            Label("Hidden, because the clipping looks like a secret. Press Return to paste the result.", systemImage: "lock.fill")
+                                .foregroundStyle(.secondary)
+                        }
                         else if let out = model.filterPreview { Text(out).font(.body.monospaced()).textSelection(.enabled) }
                         else { ProgressView().controlSize(.small) }
                     }.frame(maxWidth: .infinity, alignment: .leading)

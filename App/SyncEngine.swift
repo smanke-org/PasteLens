@@ -95,7 +95,10 @@ final class SyncEngine {
         #if APPSTORE
         "iCloud Drive (PasteLens's app folder)"
         #else
-        folder.map { $0.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Mobile Documents/com~apple~CloudDocs", with: "iCloud Drive") } ?? "iCloud Drive/PasteLens"
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["PASTELENS_SYNC_FOLDER"] != nil { return "iCloud Drive/PasteLens" }
+        #endif
+        return folder.map { $0.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Mobile Documents/com~apple~CloudDocs", with: "iCloud Drive") } ?? "iCloud Drive/PasteLens"
         #endif
     }
 
@@ -482,7 +485,8 @@ final class SyncEngine {
 /// The sync data key, kept in this Mac's login keychain.
 enum Keychain {
     static let service = "com.smanke.PasteLens.sync"
-    static let account = "data-key"
+    /// Test runs pointed at a scratch sync folder keep their key apart from the real one.
+    static let account = ProcessInfo.processInfo.environment["PASTELENS_SYNC_FOLDER"] == nil ? "data-key" : "data-key-test"
 
     static func saveKey(_ key: SymmetricKey) {
         deleteKey()
