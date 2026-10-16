@@ -106,6 +106,8 @@ struct FilterEditor: View {
                     TextField("Group", text: $filter.group, prompt: Text("My Filters"))
                     TextField("Description", text: $filter.details, axis: .vertical).lineLimit(1...3)
                     Toggle("Show in Quick Paste", isOn: $filter.showInQuickPaste)
+                    Toggle("Show in Menu Bar Menu", isOn: $filter.showInMenu)
+                        .help("List this filter under Filters in PasteLens's menu bar menu. Choosing it there filters the clipboard and pastes the result.")
                     LabeledContent("Shortcut") { ShortcutRecorder(hotKey: $key) }
                 }
                 Section {

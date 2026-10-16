@@ -485,3 +485,16 @@ import Testing
         #expect(bars.count == 12 && bars.allSatisfy { $0.total == 0 })
     }
 }
+
+@Suite struct FilterMenuTests {
+    @Test func menuChoiceDecodesAndRoundTrips() throws {
+        // A filter saved before the menu option existed has no key for it.
+        var filter = Filter(name: "Upper", steps: [FilterStep(.changeCase)])
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(filter)) as! [String: Any]
+        json.removeValue(forKey: "inMenu")
+        let old = try JSONDecoder().decode(Filter.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(!old.showInMenu)
+        filter.showInMenu = true
+        #expect(try JSONDecoder().decode(Filter.self, from: JSONEncoder().encode(filter)).showInMenu)
+    }
+}

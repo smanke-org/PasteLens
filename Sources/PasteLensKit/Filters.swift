@@ -12,6 +12,13 @@ public struct Filter: Codable, Identifiable, Hashable, Sendable {
     public var updatedAt: Date
     /// Stable key for filters PasteLens ships, so an update can tell them apart from yours.
     public var builtInKey: String?
+    /// Stored optionally so filters saved before this option existed still decode.
+    private var inMenu: Bool?
+    /// Whether the filter is listed under Filters in the menu bar menu.
+    public var showInMenu: Bool {
+        get { inMenu ?? false }
+        set { inMenu = newValue }
+    }
 
     public init(id: UUID = UUID(), name: String, details: String = "", group: String = "", steps: [FilterStep],
                 builtInKey: String? = nil) {

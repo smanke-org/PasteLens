@@ -283,7 +283,21 @@ enum BridgeHandler {
         case "debug-menu":
             let menu = NSMenu()
             (NSApp.delegate as? AppDelegate)?.menuNeedsUpdate(menu)
-            return menu.items.map { $0.isSeparatorItem ? "—" : $0.title }
+            // Submenus are listed indented under their item, with each entry's action.
+            func lines(_ menu: NSMenu, _ indent: String) -> [String] {
+                menu.items.flatMap { item -> [String] in
+                    let title = item.isSeparatorItem ? "—" : item.title
+                    let action = item.action.map { " [\(NSStringFromSelector($0))\((item.target as AnyObject?)?.responds(to: $0) == true ? "" : " UNHANDLED")]" } ?? ""
+                    return [indent + title + action] + (item.submenu.map { lines($0, indent + "    ") } ?? [])
+                }
+            }
+            return lines(menu, "")
+        case "debug-filter-menu":
+            // Sets a filter's Show in Menu Bar Menu option, as its editor's switch does.
+            guard let name = args["name"], var filter = store.filter(named: name) else { return ["ok": false] }
+            filter.showInMenu = args["value"] != "false"
+            store.upsertFilter(filter)
+            return ["ok": true]
         case "debug-set":
             if let key = args["key"], let value = args["value"] {
                 let parsed: Any = value == "true" ? true : value == "false" ? false : Int(value).map { $0 as Any } ?? value

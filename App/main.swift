@@ -158,15 +158,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let isSmart = ClipStore.shared.library.smartPastebins.contains { $0.id == id }
             QuickPastePanel.shared.toggle(source: isSmart ? .smart(id) : .pastebin(id), viaHotKey: true)
         case .filter(let id):
-            // Filters the clipboard and pastes the result.
-            guard let filter = ClipStore.shared.library.filters.first(where: { $0.id == id }),
-                  let text = NSPasteboard.general.string(forType: .string) else { SoundPlayer.play(.error); return }
-            Task {
-                do { Paster.paste(text: try await FilterRunner.run(filter, on: text, services: AppFilterServices())) }
-                catch { SoundPlayer.play(.error); NSLog("PasteLens: filter failed: \(error.localizedDescription)") }
-            }
+            pasteFiltered(id)
         case .clipping(let id):
             if let clip = ClipStore.shared.clip(id) { Paster.paste(clip) }
+        }
+    }
+
+    /// Filters the clipboard and pastes the result.
+    private func pasteFiltered(_ id: UUID) {
+        guard let filter = ClipStore.shared.library.filters.first(where: { $0.id == id }),
+              let text = NSPasteboard.general.string(forType: .string) else { SoundPlayer.play(.error); return }
+        Task {
+            do { Paster.paste(text: try await FilterRunner.run(filter, on: text, services: AppFilterServices())) }
+            catch { SoundPlayer.play(.error); NSLog("PasteLens: filter failed: \(error.localizedDescription)") }
         }
     }
 
@@ -249,6 +253,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
+        // Filters chosen with "Show in Menu Bar Menu", in a submenu.
+        let filters = ClipStore.shared.library.filters.filter(\.showInMenu)
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        if !filters.isEmpty {
+            menu.addItem(.separator())
+            let submenu = NSMenu(title: "Filters")
+            for filter in filters {
+                let entry = item(filter.name, #selector(runFilter(_:)), hotKey: filter.hotKey.map(HotKey.init))
+                entry.representedObject = filter.id
+                entry.toolTip = filter.details.isEmpty ? "Filter the clipboard and paste the result" : filter.details
+                submenu.addItem(entry)
+            }
+            submenu.addItem(.separator())
+            submenu.addItem(item("Edit Filters…", #selector(showFilters)))
+            let parent = NSMenuItem(title: "Filters", action: nil, keyEquivalent: "")
+            parent.image = NSImage(systemSymbolName: "camera.filters", accessibilityDescription: nil)
+            parent.submenu = submenu
+            menu.addItem(parent)
+        }
+
         menu.addItem(.separator())
         let stackCount = StackController.shared.items.count
         menu.addItem(item(stackCount > 0 ? "Stack (\(stackCount))" : "Stack", #selector(showStack), hotKey: prefs.hotKey(.showStack), symbol: "square.stack.3d.up"))
@@ -306,6 +330,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func copyRecent(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? UUID, let clip = ClipStore.shared.clip(id) else { return }
         _ = Paster.copy(clip)
+    }
+    @objc func runFilter(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        // After the menu has closed, so the paste goes to the app in front.
+        DispatchQueue.main.async { self.pasteFiltered(id) }
+    }
+    @objc func showFilters() {
+        MainWindow.shared.state.section = .filters
+        MainWindow.shared.show()
     }
     @objc func allowAccessibility() {
         if !Paster.requestAccess() { Paster.openAccessibilitySettings() }
