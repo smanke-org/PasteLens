@@ -15,7 +15,8 @@ final class MainWindow: NSObject, NSWindowDelegate {
     private var resignObserver: Any?
     private var keyMonitor: Any?
 
-    func show(selecting clip: UUID? = nil) {
+    /// `focusingSearch` puts the cursor in the search field, for when the hot key opened the window.
+    func show(selecting clip: UUID? = nil, focusingSearch: Bool = false) {
         Activity.shared.touch()
         if let front = NSWorkspace.shared.frontmostApplication, front != .current { previousApp = front }
         if window == nil {
@@ -48,6 +49,25 @@ final class MainWindow: NSObject, NSWindowDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        if focusingSearch {
+            // A window that was just made hasn't laid out its toolbar yet, so wait a turn.
+            DispatchQueue.main.async { MainWindow.shared.focusSearch() }
+        }
+    }
+
+    /// The toolbar's search field, which lives outside the content view, in the window's frame view.
+    private var searchField: NSSearchField? {
+        func find(_ view: NSView) -> NSSearchField? {
+            if let field = view as? NSSearchField { return field }
+            for sub in view.subviews { if let hit = find(sub) { return hit } }
+            return nil
+        }
+        return (window?.contentView?.superview).flatMap(find)
+    }
+
+    private func focusSearch() {
+        guard let window, let field = searchField, field.window === window else { return }
+        window.makeFirstResponder(field)
     }
 
     private func handlePastebinKey(_ event: NSEvent) -> Bool {
@@ -62,16 +82,26 @@ final class MainWindow: NSObject, NSWindowDelegate {
     }
 
     /// Tab selects the next sidebar item, Shift-Tab the previous one, wrapping at the ends.
-    /// While text is being edited (the search field, a rename, a snippet) Tab keeps its usual job.
+    /// This works from the search field too, so typing there and tabbing between sections go
+    /// together. While other text is being edited (a rename, a snippet) Tab keeps its usual job.
     private func handleSidebarTab(_ event: NSEvent) -> Bool {
         guard let window, event.window === window, event.keyCode == 48,
-              event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
-              !(window.firstResponder is NSText) else { return false }
+              event.modifierFlags.intersection([.command, .option, .control]).isEmpty else { return false }
+        // Activity has no search field, so focus falls to the window there; tabbing on from it
+        // goes back to searching.
+        var fromSearch = window.firstResponder === window
+        if let text = window.firstResponder as? NSText {
+            // A search field edits through the window's field editor, whose delegate is the field.
+            guard let editor = text as? NSTextView, editor.isFieldEditor, editor.delegate is NSSearchField else { return false }
+            fromSearch = true
+        }
         let items = sidebarSections()
         guard !items.isEmpty else { return false }
         let step = event.modifierFlags.contains(.shift) ? -1 : 1
         let current = items.firstIndex(of: state.section) ?? (step > 0 ? -1 : 0)
         state.section = items[(current + step + items.count) % items.count]
+        // Snippets and Filters bring their own search field, so put the cursor back in whichever one shows.
+        if fromSearch { DispatchQueue.main.async { MainWindow.shared.focusSearch() } }
         return true
     }
 

@@ -145,7 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .action(let action):
             switch action {
             case .quickPaste: QuickPastePanel.shared.toggle(viaHotKey: true)
-            case .mainWindow: MainWindow.shared.show()
+            case .mainWindow: MainWindow.shared.show(focusingSearch: true)
             case .pastePlain:
                 if let text = NSPasteboard.general.string(forType: .string) { Paster.write(text: text); Paster.pasteClipboard(after: 0.05) }
             case .pasteFromStack: StackController.shared.pasteNext()

@@ -206,9 +206,12 @@ enum BridgeHandler {
             case "quickpaste-source":
                 QuickPastePanel.shared.show()
                 if args["source"] == "snippets" { QuickPastePanel.shared.model.source = .snippets }
-            case "main": MainWindow.shared.state.section = .clips(.history); MainWindow.shared.state.query = ""; MainWindow.shared.show()
-            case "filters": MainWindow.shared.state.section = .filters; MainWindow.shared.state.query = ""; MainWindow.shared.show()
-            case "snippets": MainWindow.shared.state.section = .snippets; MainWindow.shared.state.query = ""; MainWindow.shared.show()
+            case "main": MainWindow.shared.state.section = .clips(.history); MainWindow.shared.state.query = ""
+                MainWindow.shared.show(focusingSearch: args["hotkey"] == "true")
+            case "filters": MainWindow.shared.state.section = .filters; MainWindow.shared.state.query = ""
+                MainWindow.shared.show(focusingSearch: args["hotkey"] == "true")
+            case "snippets": MainWindow.shared.state.section = .snippets; MainWindow.shared.state.query = ""
+                MainWindow.shared.show(focusingSearch: args["hotkey"] == "true")
             case "activity": MainWindow.shared.state.section = .activity; MainWindow.shared.state.activityMac = args["mac"]; MainWindow.shared.show()
             case "stack": StackWindow.shared.show()
             case "welcome": WelcomeWindow.shared.show()
