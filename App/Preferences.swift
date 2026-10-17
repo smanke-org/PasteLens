@@ -47,7 +47,7 @@ final class Preferences {
         Key.maxClippings, Key.maxDays, Key.unlimited, Key.maxClipMB, Key.ignoredApps, Key.captureImages, Key.captureFiles,
         Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.windowPaste, Key.menuRecents, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
         Key.sounds, Key.detectSensitive, Key.sensitiveMinutes, Key.ocr, Key.linkPreviews, Key.expansion,
-        Key.syncMaxClipMB, "updatePolicy",
+        Key.syncMaxClipMB, "updatePolicy", UpdateInterval.valueKey, UpdateInterval.unitKey,
     ] + HotKeyAction.allCases.map { Key.hotKeyPrefix + $0.rawValue }
 
     // MARK: History

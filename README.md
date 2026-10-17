@@ -63,7 +63,7 @@ pastelens help
 
 ## Updates
 
-The GitHub version checks for new releases. In **Settings › General** you choose whether updates install automatically, whether it asks first, or whether it never checks. Each download's signature and notarization are verified before it is installed.
+The GitHub version checks for new releases. In **Settings › General** you choose whether updates install automatically, whether it asks first, or whether it never checks, and how often it looks: once a day unless you pick another number of hours, days, weeks or months. Each download's signature and notarization are verified before it is installed.
 
 ## Building
 

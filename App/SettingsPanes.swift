@@ -85,6 +85,9 @@ struct GeneralSettings: View {
                 Picker("When an update is available", selection: $updater.policy) {
                     ForEach(UpdatePolicy.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
+                if updater.policy != .off {
+                    UpdateIntervalPicker(interval: $updater.interval)
+                }
                 if let staged = updater.staged {
                     LabeledContent("Version \(staged.version) is ready") { Button("Install Now") { updater.installNow() } }
                 }
@@ -99,8 +102,8 @@ struct GeneralSettings: View {
                 }
             } header: { Text("Updates") } footer: {
                 Text(updater.policy == .automatic
-                     ? "New versions install themselves when Quick Paste is closed, the stack is empty, nothing is syncing, and your Mac has been idle for 2 minutes."
-                     : updater.policy == .ask ? "PasteLens checks every 30 minutes and tells you when a new version is out." : "Use Check Now whenever you like.")
+                     ? "PasteLens checks \(updater.interval.phrase). New versions install themselves when Quick Paste is closed, the stack is empty, nothing is syncing, and your Mac has been idle for 2 minutes."
+                     : updater.policy == .ask ? "PasteLens checks \(updater.interval.phrase) and tells you when a new version is out." : "Use Check Now whenever you like.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             #endif

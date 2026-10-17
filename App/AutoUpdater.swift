@@ -32,7 +32,8 @@ enum UpdatePolicy: String, CaseIterable {
     }
 }
 
-/// Looks for updates every half hour and, depending on the policy, notifies or installs.
+/// Looks for updates as often as the user chose (once a day unless they change it) and,
+/// depending on the policy, notifies or installs.
 ///
 /// An automatic install relaunches PasteLens, which would end a capture in progress or a
 /// region being watched. So a downloaded update waits until all of these hold:
@@ -55,10 +56,26 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    /// Follows a choice that arrived from another Mac.
+    /// How often to look for updates on its own.
+    var interval = UpdateInterval.current {
+        didSet {
+            guard interval != oldValue else { return }
+            // Only a real change: a value read from another Mac before its unit has arrived must not
+            // be stored back clamped to the old unit.
+            if UpdateInterval.current != interval { UpdateInterval.current = interval }
+            SyncEngine.shared.settingChanged(UpdateInterval.valueKey)
+            SyncEngine.shared.settingChanged(UpdateInterval.unitKey)
+            scheduleChecks()
+            checkIfDue()
+        }
+    }
+
+    /// Follows update choices that arrived from another Mac.
     func reloadPolicy() {
         let current = UpdatePolicy.current
         if current != policy { policy = current }
+        let storedInterval = UpdateInterval.current
+        if interval != storedInterval { interval = storedInterval }
     }
 
     /// A verified update waiting for a quiet moment, with its version.
@@ -74,12 +91,16 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
     @ObservationIgnored private var checking = false
 
     // Overridable for testing, so a run doesn't take half an hour.
-    private let checkInterval = TimeInterval(ProcessInfo.processInfo.environment["PASTELENS_UPDATE_CHECK_SECONDS"].flatMap(Double.init) ?? 10 * 60)
+    /// When set, the number of seconds between checks, in place of the chosen interval.
+    private let testCheckInterval = ProcessInfo.processInfo.environment["PASTELENS_UPDATE_CHECK_SECONDS"].flatMap(Double.init)
+    private var checkInterval: TimeInterval { testCheckInterval ?? interval.seconds }
     private let effectsQuiet = TimeInterval(ProcessInfo.processInfo.environment["PASTELENS_UPDATE_EFFECTS_QUIET_SECONDS"].flatMap(Double.init) ?? 10 * 60)
     private let userIdle = TimeInterval(ProcessInfo.processInfo.environment["PASTELENS_UPDATE_USER_IDLE_SECONDS"].flatMap(Double.init) ?? 2 * 60)
 
     private static let installedFromKey = "update.autoInstalledFrom"
     private static let notifiedVersionKey = "update.notifiedVersion"
+    /// When this Mac last asked GitHub; not synced, so each Mac keeps its own schedule.
+    private static let lastCheckKey = "update.lastCheck"
     nonisolated private static let category = "update"
     private static let installAction = "install"
 
@@ -92,10 +113,8 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
         if policy != .off { requestNotificationPermission() }
         announceIfJustUpdated()
 
-        check()
-        checkTimer = Timer.scheduledTimer(withTimeInterval: checkInterval, repeats: true) { _ in
-            MainActor.assumeIsolated { AutoUpdater.shared.check() }
-        }
+        checkIfDue()
+        scheduleChecks()
     }
 
     /// Install a waiting (or available) update now, because the user asked to.
@@ -107,16 +126,37 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Ticks every 15 minutes (or sooner, for a shorter interval) and compares the clock with
+    /// the last check, because a Timer stops counting while the Mac sleeps: a day-long one
+    /// could otherwise wait for days.
+    private func scheduleChecks() {
+        checkTimer?.invalidate()
+        checkTimer = Timer.scheduledTimer(withTimeInterval: min(checkInterval, 15 * 60), repeats: true) { _ in
+            MainActor.assumeIsolated { AutoUpdater.shared.checkIfDue() }
+        }
+    }
+
+    /// Checks if the chosen interval has passed since this Mac last asked.
+    func checkIfDue() {
+        if let last = AppDefaults.store.object(forKey: Self.lastCheckKey) as? Date,
+           Date().timeIntervalSince(last) < checkInterval - 1 { return }
+        check()
+    }
+
     // MARK: - Checking
 
     func check() {
         guard policy != .off, !checking, staged == nil else { return }
         checking = true
+        AppDefaults.store.set(Date(), forKey: Self.lastCheckKey)
         Task {
             defer { checking = false }
+            var reachedGitHub = false
             lastChecked = Date()
             do {
-                guard let release = try await UpdateController.fetchLatestRelease(),
+                let latest = try await UpdateController.fetchLatestRelease()
+                reachedGitHub = true
+                guard let release = latest,
                       UpdateController.isNewer(release.version, than: AppInfo.version) else {
                     UpdateAvailability.shared.pending = nil
                     return
@@ -138,6 +178,7 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
                 }
             } catch {
                 lastError = error.localizedDescription
+                if !reachedGitHub { AppDefaults.store.removeObject(forKey: Self.lastCheckKey) }
                 NSLog("PasteLens: update check failed: \(error.localizedDescription)")
                 // An automatic install that failed falls back to asking, once per version.
                 if policy == .automatic, let version = UpdateAvailability.shared.pending {
