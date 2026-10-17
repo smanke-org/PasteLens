@@ -247,10 +247,14 @@ enum PanelKeys {
     static func begin() {
         end()
         HotKeyCenter.shared.installHandlerOnce()
-        var ref: EventHotKeyRef?
-        let status = RegisterEventHotKey(UInt32(kVK_Tab), UInt32(shiftKey), EventHotKeyID(signature: signature, id: 1),
-                                         GetApplicationEventTarget(), 0, &ref)
-        if status == noErr, let ref { refs.append(ref) }
+        // 1 ⇧⇥ up the left column, 2 ⌥⇥ right along the top, 3 ⇧⌥⇥ left along the top.
+        let keys: [(UInt32, UInt32)] = [(1, UInt32(shiftKey)), (2, UInt32(optionKey)), (3, UInt32(shiftKey | optionKey))]
+        for (id, mods) in keys {
+            var ref: EventHotKeyRef?
+            let status = RegisterEventHotKey(UInt32(kVK_Tab), mods, EventHotKeyID(signature: signature, id: id),
+                                             GetApplicationEventTarget(), 0, &ref)
+            if status == noErr, let ref { refs.append(ref) }
+        }
     }
 
     static func end() {
@@ -259,8 +263,8 @@ enum PanelKeys {
     }
 
     static func fire(_ id: UInt32) {
-        guard id == 1, QuickPastePanel.shared.isVisible else { return }
-        QuickPastePanel.shared.model.shiftTab()
+        guard (1...3).contains(id), QuickPastePanel.shared.isVisible else { return }
+        QuickPastePanel.shared.model.tab(across: id != 1, back: id != 2)
     }
 }
 

@@ -91,8 +91,8 @@ final class QuickPastePanel {
 
     private func installMonitors() {
         removeMonitors()
-        // Something on some Macs takes Shift-Tab before any window sees it; while Quick Paste
-        // is open it's held as a hot key instead, which macOS always delivers.
+        // Something on some Macs takes Shift-Tab (and maybe the Option-Tab pair) before any window
+        // sees it; while Quick Paste is open they're held as hot keys instead, which macOS always delivers.
         PanelKeys.begin()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.isVisible, event.window === self.panel else { return event }
@@ -169,7 +169,7 @@ final class QuickPasteModel {
         return out
     }
 
-    /// The row across the top: Pinned, smart pastebins and snippets. Shift-Tab moves through these.
+    /// The row across the top: Pinned, smart pastebins and snippets. Option-Tab moves through these.
     var viewSources: [(Source, String, String)] {
         let store = ClipStore.shared
         var out: [(Source, String, String)] = []
@@ -290,9 +290,11 @@ final class QuickPasteModel {
         selection = (selection + delta + count) % count
     }
 
-    func shiftTab() {
+    /// Tab and Shift-Tab walk the pastebins on the left; Option-Tab and Shift-Option-Tab walk
+    /// the views across the top.
+    func tab(across: Bool, back: Bool) {
         guard filterMode == nil else { return }
-        cycle(viewSources, 1)
+        cycle(across ? viewSources : binSources, back ? -1 : 1)
     }
 
     /// Steps through one group of sources. From the other group, it starts at that group's first.
@@ -334,8 +336,7 @@ final class QuickPasteModel {
             return true
         case kVK_Tab:
             guard filterMode == nil else { return true }
-            // Tab walks the pastebins on the left; Shift-Tab walks the views across the top.
-            if flags.contains(.shift) { shiftTab() } else { cycle(binSources, 1) }
+            tab(across: flags.contains(.option), back: flags.contains(.shift))
             return true
         case kVK_Return, kVK_ANSI_KeypadEnter:
             if flags.contains(.command) {
@@ -459,10 +460,10 @@ struct QuickPasteView: View {
                                     .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
                                     .background(model.source == source ? Color.accentColor.opacity(0.25) : .clear, in: .capsule)
                             }.buttonStyle(.plain)
-                            .help("Show these clippings. Shift-Tab moves through this row.")
+                            .help("Show these clippings. Option-Tab moves right along this row, Shift-Option-Tab left.")
                         }
                         Spacer(minLength: 0)
-                        Text("⇧⇥").font(.caption).foregroundStyle(.tertiary)
+                        Text("⌥⇥").font(.caption).foregroundStyle(.tertiary)
                     }
                 }
             }
@@ -470,7 +471,7 @@ struct QuickPasteView: View {
         .padding(.horizontal, 12).padding(.top, 20).padding(.bottom, 8)
     }
 
-    /// History and the pastebins, down the left. Tab moves through them; ⌃1–⌃9 move clippings into them.
+    /// History and the pastebins, down the left. Tab moves down them, Shift-Tab up; ⌃1–⌃9 move clippings into them.
     var binColumn: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
@@ -639,7 +640,7 @@ struct QuickPasteView: View {
                 hint("⌃1–9", "Move to pastebin"); hint("⌘S", "Stack"); hint("⎋", "Clear")
             } else {
                 hint("↩", "Paste"); hint("⇧↩", "Plain"); hint("⌘↩", "Filter"); hint("⌥↩", "Type")
-                hint("⇥", "Pastebin"); hint("⇧⇥", "View"); hint("⌘-click", "Pick several"); hint("⌃1–9", "Move")
+                hint("⇥", "Pastebin"); hint("⌥⇥", "View"); hint("⌘-click", "Pick several"); hint("⌃1–9", "Move")
             }
             Spacer()
         }

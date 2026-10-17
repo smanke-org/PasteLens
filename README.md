@@ -17,7 +17,7 @@ Requires macOS 26 or later.
 ## What it does
 
 - **History**: everything you copy, including text, rich text, links, colors, images and files, ready to paste again. You choose how many clippings to keep by typing a number (0 keeps everything) and, optionally, how many days.
-- **Quick Paste (⌃`)**: search and paste from any app. Search tolerates typos. ⌘1–⌘9 paste directly, ⇧↩ pastes plain text, ⌥↩ types the text out for fields that block pasting, and Tab switches pastebins. There's an optional "release to paste" mode that works like ⌘⇥.
+- **Quick Paste (⌃`)**: search and paste from any app. Search tolerates typos. ⌘1–⌘9 paste directly, ⇧↩ pastes plain text, ⌥↩ types the text out for fields that block pasting, Tab and Shift-Tab move down and up the pastebins, and Option-Tab and Shift-Option-Tab move right and left along the views across the top. There's an optional "release to paste" mode that works like ⌘⇥.
 - **Pastebins and smart pastebins**: save clippings you want to keep. Smart pastebins collect clippings automatically by rules such as kind, text, source app, size or age.
 - **Filters (⌘↩ in Quick Paste)**: 50+ built in, including case styles, encoding, find and replace with a live regex tester, line operations, JSON, Markdown, HTML, translation and Apple Intelligence (summarize, fix grammar, rewrite). You can also build your own from steps, including JavaScript and shell scripts, and give any filter its own shortcut.
 - **Stack**: queue clippings and paste them one after another with ⌃⇧⌘V. "Collect" mode adds each copy as you go.
