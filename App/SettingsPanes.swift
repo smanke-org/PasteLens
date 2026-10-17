@@ -369,12 +369,20 @@ struct PrivacyPoint: View {
 struct SnippetSettings: View {
     @State private var prefs = Preferences.shared
     @State private var granted = SnippetExpander.inputMonitoringGranted
+    @State private var bridge = ExpansionLensBridge.shared
 
     var body: some View {
         Form {
             Section {
                 Toggle("Expand abbreviations as you type", isOn: $prefs.expansion)
                     .onChange(of: prefs.expansion) { SnippetExpander.shared.refresh(); granted = SnippetExpander.inputMonitoringGranted }
+                if bridge.conflict {
+                    LabeledContent {
+                        Button("Turn Off") { bridge.turnOff(); granted = SnippetExpander.inputMonitoringGranted }
+                    } label: {
+                        Label("ExpansionLens is also expanding abbreviations. Turn this off so snippets don't expand twice.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                    }
+                }
                 if prefs.expansion && !granted {
                     LabeledContent {
                         Button("Open Settings") {

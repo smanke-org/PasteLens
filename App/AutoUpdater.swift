@@ -109,6 +109,7 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
         let install = UNNotificationAction(identifier: Self.installAction, title: "Install", options: [.foreground])
         UNUserNotificationCenter.current().setNotificationCategories([
             UNNotificationCategory(identifier: Self.category, actions: [install], intentIdentifiers: []),
+            ExpansionLensBridge.notificationCategory,
         ])
         if policy != .off { requestNotificationPermission() }
         announceIfJustUpdated()
@@ -311,12 +312,14 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
-        let installable = response.notification.request.content.categoryIdentifier == Self.category
+        let category = response.notification.request.content.categoryIdentifier
+        let action = response.actionIdentifier
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 // Clicking the banner or its Install button opens the usual confirmation,
                 // so the user still sees what they're agreeing to.
-                if installable { UpdateController.checkForUpdates() }
+                if category == Self.category { UpdateController.checkForUpdates() }
+                if category == ExpansionLensBridge.category { ExpansionLensBridge.handle(action: action) }
             }
         }
         completionHandler()

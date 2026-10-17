@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         SyncEngine.shared.start()
         step("sync")
         BridgeHandler.start()
+        ExpansionLensBridge.shared.start()
         step("bridge")
 
         setUpStatusItem()

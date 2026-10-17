@@ -21,7 +21,7 @@ Requires macOS 26 or later.
 - **Pastebins and smart pastebins**: save clippings you want to keep. Smart pastebins collect clippings automatically by rules such as kind, text, source app, size or age.
 - **Filters (⌘↩ in Quick Paste)**: 50+ built in, including case styles, encoding, find and replace with a live regex tester, line operations, JSON, Markdown, HTML, translation and Apple Intelligence (summarize, fix grammar, rewrite). You can also build your own from steps, including JavaScript and shell scripts, and give any filter its own shortcut.
 - **Stack**: queue clippings and paste them one after another with ⌃⇧⌘V. "Collect" mode adds each copy as you go.
-- **Snippets**: reusable text with placeholders such as `{date:yyyy-MM-dd}`, `{clipboard}`, `{input:Name}` and `{cursor}`. Snippets can expand from typed abbreviations (optional).
+- **Snippets**: reusable text with placeholders such as `{date:yyyy-MM-dd}`, `{clipboard}`, `{input:Name}` and `{cursor}`. Snippets can expand from typed abbreviations (optional). If [ExpansionLens](https://github.com/smanke-org/ExpansionLens) is expanding too, PasteLens offers to turn its own expansion off so nothing expands twice.
 - **Smart clipboard**:
   - Text in screenshots and images is recognized on your Mac, so you can search it.
   - Colors get swatches in every notation.

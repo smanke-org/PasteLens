@@ -82,7 +82,7 @@ final class Preferences {
     var sensitiveMinutes: Int { didSet { save(Key.sensitiveMinutes, sensitiveMinutes) } }
     var ocr: Bool { didSet { save(Key.ocr, ocr) } }
     var linkPreviews: Bool { didSet { save(Key.linkPreviews, linkPreviews) } }
-    var expansion: Bool { didSet { save(Key.expansion, expansion) } }
+    var expansion: Bool { didSet { save(Key.expansion, expansion); ExpansionLensBridge.shared.announce() } }
 
     // MARK: Sync
 
