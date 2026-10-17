@@ -180,8 +180,35 @@ final class ClipStore {
         case .pinned: db.count(.pinned)
         case .all: db.totalCount
         case .pastebin(let id): db.count(.pastebin(id))
-        case .smart: nil
+        case .smart(let id): smartCount(id)
         }
+    }
+
+    /// Smart pastebin counts, worked out off the main thread in one pass over the library.
+    /// Nil until the first pass finishes; a stale count shows while a new one is worked out.
+    @ObservationIgnored private var smartCountsKey = ""
+    private var smartCounts: [UUID: Int] = [:]
+
+    private func smartCount(_ id: UUID) -> Int? {
+        let bins = library.smartPastebins
+        // The minute is in the key so age rules like Today catch up while the window is open.
+        let key = "\(revision)|\(bins.hashValue)|\(Int(Date().timeIntervalSince1970 / 60))"
+        if key != smartCountsKey {
+            smartCountsKey = key
+            let db = db!
+            Task.detached(priority: .utility) {
+                let now = Date()
+                var counts = Dictionary(uniqueKeysWithValues: bins.map { ($0.id, 0) })
+                db.forEach(.all) { clip in
+                    for bin in bins where bin.matches(clip, now: now) { counts[bin.id, default: 0] += 1 }
+                    return true
+                }
+                await MainActor.run {
+                    if ClipStore.shared.smartCountsKey == key { ClipStore.shared.smartCounts = counts }
+                }
+            }
+        }
+        return smartCounts[id]
     }
 
     /// A page of clippings in a scope, newest first, or best match first when searching.

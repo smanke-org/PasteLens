@@ -183,6 +183,12 @@ final class QuickPasteModel {
 
     var sources: [(Source, String, String)] { binSources + viewSources }
 
+    /// How many clippings (or snippets) a source holds, ignoring the search.
+    func total(_ source: Source) -> Int? {
+        guard let scope = source.scope else { return ClipStore.shared.library.snippets.count }
+        return ClipStore.shared.count(scope)
+    }
+
     func reset(source: Source) {
         filterMode = nil
         self.source = source
@@ -446,7 +452,10 @@ struct QuickPasteView: View {
                     HStack(spacing: 4) {
                         ForEach(model.viewSources, id: \.0) { source, name, symbol in
                             Button { model.source = source } label: {
-                                Label(name, systemImage: symbol)
+                                HStack(spacing: 4) {
+                                    Label(name, systemImage: symbol)
+                                    if let n = model.total(source) { Text("\(n)").foregroundStyle(.secondary).monospacedDigit() }
+                                }
                                     .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
                                     .background(model.source == source ? Color.accentColor.opacity(0.25) : .clear, in: .capsule)
                             }.buttonStyle(.plain)
@@ -477,6 +486,7 @@ struct QuickPasteView: View {
                             Image(systemName: symbol).frame(width: 16)
                             Text(name).lineLimit(1)
                             Spacer(minLength: 4)
+                            if let n = model.total(source) { Text("\(n)").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
                             if case .pastebin(let id) = source, let n = model.pastebins.firstIndex(where: { $0.id == id }), n < 9 {
                                 Text("⌃\(n + 1)").font(.caption).foregroundStyle(.tertiary)
                             }

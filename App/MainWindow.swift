@@ -254,7 +254,7 @@ struct Sidebar: View {
             }
             Section("Smart Pastebins") {
                 ForEach(store.library.smartPastebins.sorted { $0.order < $1.order }) { bin in
-                    label(bin.name, bin.symbol, color: BinColor.color(bin.colorName), count: nil)
+                    label(bin.name, bin.symbol, color: BinColor.color(bin.colorName), count: store.count(.smart(bin.id)))
                         .tag(MainState.Section.clips(.smart(bin.id)))
                         .contextMenu {
                             Button("Edit…") { state.editingSmart = bin }
