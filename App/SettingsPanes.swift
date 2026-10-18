@@ -63,6 +63,15 @@ struct GeneralSettings: View {
                     Text("Needs Accessibility permission. Without it, PasteLens copies and you press ⌘V yourself.").font(.caption)
                 }
             }
+            Section {
+                Picker("Appearance", selection: $prefs.appearance) {
+                    ForEach(Appearance.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text("Light or Dark keeps PasteLens that way whatever the system uses; System follows your Mac.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Where PasteLens appears") {
                 Toggle("Show in Dock", isOn: $presence.showInDock)
                 Toggle("Show in menu bar", isOn: $presence.showInMenuBar)

@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         NSApp.mainMenu = mainMenu()
+        Preferences.shared.applyAppearance()
         let newInstall = !AppDefaults.store.bool(forKey: "welcomed")
 
         _ = ClipStore.shared

@@ -31,6 +31,7 @@ final class Preferences {
         static let quickPasteAtMouse = "quickPaste.atMouse"
         static let quickPasteCount = "quickPaste.visibleRows"
         static let sounds = "sounds.enabled"
+        static let appearance = "appearance"
         static let detectSensitive = "privacy.detectSensitive"
         static let sensitiveMinutes = "privacy.sensitiveMinutes"
         static let ocr = "ocr.enabled"
@@ -46,7 +47,7 @@ final class Preferences {
     static let syncedKeys: [String] = [
         Key.maxClippings, Key.maxDays, Key.unlimited, Key.maxClipMB, Key.ignoredApps, Key.captureImages, Key.captureFiles,
         Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.windowPaste, Key.menuRecents, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
-        Key.sounds, Key.detectSensitive, Key.sensitiveMinutes, Key.ocr, Key.linkPreviews, Key.expansion,
+        Key.sounds, Key.appearance, Key.detectSensitive, Key.sensitiveMinutes, Key.ocr, Key.linkPreviews, Key.expansion,
         Key.syncMaxClipMB, "updatePolicy", UpdateInterval.valueKey, UpdateInterval.unitKey,
     ] + HotKeyAction.allCases.map { Key.hotKeyPrefix + $0.rawValue }
 
@@ -75,6 +76,18 @@ final class Preferences {
     var quickPasteAtMouse: Bool { didSet { save(Key.quickPasteAtMouse, quickPasteAtMouse) } }
     var quickPasteCount: Int { didSet { save(Key.quickPasteCount, quickPasteCount) } }
     var sounds: Bool { didSet { save(Key.sounds, sounds) } }
+    /// Light or dark for PasteLens alone, or following the system.
+    var appearance: Appearance {
+        didSet {
+            save(Key.appearance, appearance.rawValue)
+            applyAppearance()
+        }
+    }
+
+    /// Every PasteLens window, Quick Paste and the menus follow it.
+    func applyAppearance() {
+        NSApp.appearance = appearance.nsAppearance
+    }
 
     // MARK: Privacy and smarts
 
@@ -127,6 +140,7 @@ final class Preferences {
         quickPasteAtMouse = defaults.bool(forKey: Key.quickPasteAtMouse)
         quickPasteCount = defaults.integer(forKey: Key.quickPasteCount)
         sounds = defaults.bool(forKey: Key.sounds)
+        appearance = Appearance(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
         detectSensitive = defaults.bool(forKey: Key.detectSensitive)
         sensitiveMinutes = defaults.integer(forKey: Key.sensitiveMinutes)
         ocr = defaults.bool(forKey: Key.ocr)
@@ -186,6 +200,8 @@ final class Preferences {
         if quickPasteAtMouse != fresh.quickPasteAtMouse { quickPasteAtMouse = fresh.quickPasteAtMouse }
         if quickPasteCount != fresh.quickPasteCount { quickPasteCount = fresh.quickPasteCount }
         if sounds != fresh.sounds { sounds = fresh.sounds }
+        let freshAppearance = Appearance(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
+        if appearance != freshAppearance { appearance = freshAppearance }
         if detectSensitive != fresh.detectSensitive { detectSensitive = fresh.detectSensitive }
         if sensitiveMinutes != fresh.sensitiveMinutes { sensitiveMinutes = fresh.sensitiveMinutes }
         if ocr != fresh.ocr { ocr = fresh.ocr }
@@ -221,6 +237,26 @@ final class Preferences {
         for key in Self.syncedKeys { defaults.removeObject(forKey: key) }
         reloadFromDefaults()
         for key in Self.syncedKeys { stamp(key) }
+    }
+}
+
+/// Light or dark for PasteLens alone, or following the system.
+enum Appearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
     }
 }
 
