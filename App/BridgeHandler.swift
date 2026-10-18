@@ -235,10 +235,15 @@ enum BridgeHandler {
             let state = MainWindow.shared.state
             return ["index": MainWindow.shared.sidebarSections().firstIndex(of: state.section) ?? -1,
                     "count": MainWindow.shared.sidebarSections().count,
-                    "firstResponder": NSApp.keyWindow?.firstResponder.map { String(describing: type(of: $0)) } ?? "none"]
+                    "firstResponder": NSApp.keyWindow?.firstResponder.map { String(describing: type(of: $0)) } ?? "none",
+                    "selected": MainWindow.shared.selectedRows(), "activityMac": state.activityMac ?? ""]
         case "debug-focus":
             // Puts focus in the key window's first view of a kind (NSSearchField, NSTextView, NSTextField).
             guard let window = NSApp.keyWindow, let root = window.contentView?.superview else { return ["ok": false] }
+            // "list" and "sidebar" are the History window's two tables.
+            if let table = args["class"] == "list" ? MainWindow.shared.listTable : args["class"] == "sidebar" ? MainWindow.shared.sidebarTable : nil {
+                return ["ok": window.makeFirstResponder(table)]
+            }
             func find(_ view: NSView) -> NSView? {
                 if String(describing: type(of: view)) == args["class"] { return view }
                 for sub in view.subviews { if let hit = find(sub) { return hit } }

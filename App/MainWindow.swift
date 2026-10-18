@@ -3,6 +3,13 @@ import PasteLensKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension View {
+    /// Scrolls just enough to show the row the arrow keys moved to.
+    func revealing(_ id: UUID?, with proxy: ScrollViewProxy) -> some View {
+        onChange(of: id) { if let id { proxy.scrollTo(id) } }
+    }
+}
+
 /// The library window: pastebins and smart pastebins in a sidebar, clippings in the middle,
 /// a preview on the right. Snippets and filters are edited here too.
 @MainActor
@@ -32,10 +39,12 @@ final class MainWindow: NSObject, NSWindowDelegate {
             self.window = window
             // Clicking into another app closes the window, like a menu. Other PasteLens
             // windows (Settings, a sheet, an Open panel) don't count.
-            // ⌃1–⌃9 move the selected clippings to that pastebin; Tab and Shift-Tab walk the sidebar.
+            // ⌃1–⌃9 move the selected clippings to that pastebin; Tab and Shift-Tab walk the sidebar;
+            // the arrow keys walk the list and the sidebar while you search.
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 MainActor.assumeIsolated {
-                    MainWindow.shared.handlePastebinKey(event) || MainWindow.shared.handleSidebarTab(event) ? nil : event
+                    let main = MainWindow.shared
+                    return main.handlePastebinKey(event) || main.handleSidebarTab(event) || main.handleArrowKey(event) ? nil : event
                 }
             }
             resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification,
@@ -105,6 +114,178 @@ final class MainWindow: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Where the keyboard is in the window, as far as the arrow keys care.
+    private enum KeyFocus { case search(empty: Bool), window, sidebar, list, other }
+
+    private var keyFocus: KeyFocus {
+        guard let window else { return .other }
+        let responder = window.firstResponder
+        if responder === window { return .window }
+        if let editor = responder as? NSTextView {
+            // A search field edits through the window's field editor, whose delegate is the field.
+            guard editor.isFieldEditor, editor.delegate is NSSearchField else { return .other }
+            return .search(empty: editor.string.isEmpty)
+        }
+        if let table = responder as? NSTableView {
+            if table === listTable { return .list }
+            if table === sidebarTable { return .sidebar }
+        }
+        return .other
+    }
+
+    /// The window's three columns: sidebar, list, detail.
+    private var columns: [NSView] {
+        func find(_ view: NSView) -> NSSplitView? {
+            if let split = view as? NSSplitView, split.arrangedSubviews.count >= 3 { return split }
+            for sub in view.subviews { if let hit = find(sub) { return hit } }
+            return nil
+        }
+        return window?.contentView.flatMap(find)?.arrangedSubviews ?? []
+    }
+
+    private func table(in view: NSView?) -> NSTableView? {
+        guard let view else { return nil }
+        if let table = view as? NSTableView { return table }
+        for sub in view.subviews { if let hit = table(in: sub) { return hit } }
+        return nil
+    }
+
+    var sidebarTable: NSTableView? { table(in: columns.first) }
+    var listTable: NSTableView? { columns.count > 1 ? table(in: columns[1]) : nil }
+
+    /// The ends of a Shift-arrow selection made from the search field.
+    private var selectionAnchor: UUID?
+    private var selectionCursor: UUID?
+
+    /// While searching (or with the search field empty), Up and Down move the list selection and
+    /// the cursor stays put, so you can keep typing; Shift extends the selection; Return pastes.
+    /// Left and Right move along the sidebar when there's no search text to move through.
+    /// In the list itself Up and Down work as usual, except Up on the first row goes back to
+    /// searching. Anything else being edited keeps its arrow keys.
+    private func handleArrowKey(_ event: NSEvent) -> Bool {
+        guard let window, event.window === window else { return false }
+        let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        let focus = keyFocus
+        switch event.keyCode {
+        case 123, 124: // Left, Right
+            guard mods.isEmpty else { return false }
+            switch focus {
+            case .search(empty: false), .other: return false
+            case .search, .window, .sidebar, .list: break
+            }
+            let items = sidebarSections()
+            let step = event.keyCode == 124 ? 1 : -1
+            guard let current = items.firstIndex(of: state.section) else { return false }
+            let next = current + step
+            // Stop at the ends rather than wrapping.
+            guard items.indices.contains(next) else { return true }
+            state.section = items[next]
+            selectFirst()
+            if case .sidebar = focus { return true }
+            DispatchQueue.main.async { MainWindow.shared.focusSearch() }
+            return true
+        case 125, 126: // Down, Up
+            guard mods.isEmpty || mods == .shift else { return false }
+            let step = event.keyCode == 125 ? 1 : -1
+            switch focus {
+            case .search, .window:
+                moveSelection(by: step, extending: mods == .shift)
+                return true
+            case .list:
+                // Up on the first row hands the keyboard back to the search field.
+                guard step < 0, mods.isEmpty, let first = orderedIDs().first, state.selection == [first] else { return false }
+                focusSearch()
+                return true
+            case .sidebar, .other:
+                return false
+            }
+        case 36, 76: // Return, Enter
+            guard mods.isEmpty, case .clips = state.section, state.selection.count == 1,
+                  let id = state.selection.first, let clip = ClipStore.shared.clip(id) else { return false }
+            switch focus {
+            case .search, .list: paste(clip); return true
+            default: return false
+            }
+        default:
+            return false
+        }
+    }
+
+    /// The rows of the middle list, top to bottom.
+    private func orderedIDs(through id: UUID? = nil) -> [UUID] {
+        let store = ClipStore.shared
+        switch state.section {
+        case .clips(let scope):
+            // Read a page at a time until the row we're on is in it.
+            var limit = 200
+            while true {
+                let ids = store.clippings(in: scope, query: state.query, limit: limit).map(\.id)
+                if ids.count < limit || id == nil || ids.contains(id!) { return ids }
+                limit *= 4
+            }
+        case .snippets: return SnippetList.groups(store.library.snippets, query: state.query).flatMap { $0.1.map(\.id) }
+        case .filters: return FilterList.groups(store.library.filters, query: state.query).flatMap { $0.1.map(\.id) }
+        case .activity: return []
+        }
+    }
+
+    /// Where the selection sits in the list, as row numbers (for the debug bridge).
+    func selectedRows() -> [Int] {
+        let ids = orderedIDs(through: state.selection.first)
+        return ids.indices.filter { state.selection.contains(ids[$0]) }
+    }
+
+    /// The Activity list's rows: All Macs (when there's more than one), then each Mac.
+    private func activityRows() -> [String?] {
+        let macs = ActivityMac.all()
+        return macs.count > 1 ? [nil] + macs.map { $0.id } : [nil]
+    }
+
+    private func selectFirst() {
+        selectionAnchor = nil
+        selectionCursor = nil
+        switch state.section {
+        case .activity: break
+        case .clips, .snippets, .filters:
+            if let first = orderedIDs().first { state.selection = [first] }
+        }
+    }
+
+    private func moveSelection(by step: Int, extending: Bool) {
+        if case .activity = state.section {
+            let rows = activityRows()
+            let current = rows.firstIndex(of: state.activityMac) ?? 0
+            if rows.indices.contains(current + step) { state.activityMac = rows[current + step] }
+            return
+        }
+        // Where the selection's moving end is: the last row we moved to, or else the edge of
+        // the selection in the direction we're going.
+        let cursor = selectionCursor.flatMap { state.selection.contains($0) ? $0 : nil }
+        let ids = orderedIDs(through: cursor ?? state.selection.first)
+        guard !ids.isEmpty else { return }
+        let selected = ids.indices.filter { state.selection.contains(ids[$0]) }
+        let from = cursor.flatMap { ids.firstIndex(of: $0) } ?? (step > 0 ? selected.last : selected.first)
+        guard let from else {
+            state.selection = [ids[0]]
+            selectionAnchor = ids[0]
+            selectionCursor = ids[0]
+            state.reveal = ids[0]
+            return
+        }
+        let to = from + step
+        guard ids.indices.contains(to) else { return }
+        if extending {
+            let anchor = selectionAnchor.flatMap { state.selection.contains($0) ? ids.firstIndex(of: $0) : nil } ?? from
+            state.selection = Set(ids[min(anchor, to)...max(anchor, to)])
+            selectionAnchor = ids[anchor]
+        } else {
+            state.selection = [ids[to]]
+            selectionAnchor = ids[to]
+        }
+        selectionCursor = ids[to]
+        state.reveal = ids[to]
+    }
+
     /// The sidebar's selectable rows, top to bottom (not the New Pastebin rows).
     func sidebarSections() -> [MainState.Section] {
         let library = ClipStore.shared.library
@@ -156,6 +337,8 @@ final class MainState {
     /// The Mac whose activity is shown; nil shows every Mac.
     var activityMac: String?
     var selection: Set<UUID> = []
+    /// The row the arrow keys just moved to, for the list to scroll to.
+    var reveal: UUID?
     var query = ""
     var editingPastebin: Pastebin?
     var editingSmart: SmartPastebin?
@@ -315,13 +498,16 @@ struct ClipList: View {
 
     var body: some View {
         let items = clips
-        List(selection: $state.selection) {
-            ForEach(items) { clip in
-                ClipRowContent(clip: clip, lines: max(Preferences.shared.rowLines, 1))
-                    .onAppear { if clip.id == items.last?.id, items.count >= limit { limit += 200 } }
-                    .tag(clip.id)
-                    .draggable(dragText(clip))
+        ScrollViewReader { proxy in
+            List(selection: $state.selection) {
+                ForEach(items) { clip in
+                    ClipRowContent(clip: clip, lines: max(Preferences.shared.rowLines, 1))
+                        .onAppear { if clip.id == items.last?.id, items.count >= limit { limit += 200 } }
+                        .tag(clip.id)
+                        .draggable(dragText(clip))
+                }
             }
+            .revealing(state.reveal, with: proxy)
         }
         // Right-click for the menu; double-click pastes into the app that was in front.
         .contextMenu(forSelectionType: UUID.self) { ids in

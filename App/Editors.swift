@@ -11,31 +11,37 @@ struct FilterList: View {
     @State private var store = ClipStore.shared
     @State private var importReport: String?
 
-    var groups: [(String, [Filter])] {
-        let filtered = store.library.filters.filter { state.query.isEmpty || FuzzySearch.score(state.query, in: "\($0.name) \($0.group)") != nil }
+    var groups: [(String, [Filter])] { Self.groups(store.library.filters, query: state.query) }
+
+    /// The filters shown for a search, grouped and in list order; the arrow keys walk them too.
+    static func groups(_ filters: [Filter], query: String) -> [(String, [Filter])] {
+        let filtered = filters.filter { query.isEmpty || FuzzySearch.score(query, in: "\($0.name) \($0.group)") != nil }
         return Dictionary(grouping: filtered) { $0.group.isEmpty ? "My Filters" : $0.group }
             .sorted { $0.key < $1.key }.map { ($0.key, $0.value.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) }
     }
 
     var body: some View {
-        List(selection: $state.selection) {
-            ForEach(groups, id: \.0) { group, filters in
-                Section(group) {
-                    ForEach(filters) { filter in
-                        HStack {
-                            Text(filter.name)
-                            Spacer()
-                            if let key = filter.hotKey { Text(key.display).font(.caption).foregroundStyle(.secondary) }
-                        }
-                        .tag(filter.id)
-                        .contextMenu {
-                            Button("Duplicate") { duplicate(filter) }
-                            Button("Export…") { export(filter) }
-                            Button("Delete", role: .destructive) { store.deleteFilter(filter.id) }
+        ScrollViewReader { proxy in
+            List(selection: $state.selection) {
+                ForEach(groups, id: \.0) { group, filters in
+                    Section(group) {
+                        ForEach(filters) { filter in
+                            HStack {
+                                Text(filter.name)
+                                Spacer()
+                                if let key = filter.hotKey { Text(key.display).font(.caption).foregroundStyle(.secondary) }
+                            }
+                            .tag(filter.id)
+                            .contextMenu {
+                                Button("Duplicate") { duplicate(filter) }
+                                Button("Export…") { export(filter) }
+                                Button("Delete", role: .destructive) { store.deleteFilter(filter.id) }
+                            }
                         }
                     }
                 }
             }
+            .revealing(state.reveal, with: proxy)
         }
         .searchable(text: $state.query, placement: .toolbar, prompt: "Search Filters")
         .onDeleteCommand { for id in state.selection { store.deleteFilter(id) } }
@@ -339,30 +345,36 @@ struct SnippetList: View {
     @Bindable var state: MainState
     @State private var store = ClipStore.shared
 
-    var groups: [(String, [Snippet])] {
-        let filtered = store.library.snippets.filter { state.query.isEmpty || FuzzySearch.score(state.query, in: "\($0.name) \($0.abbreviation) \($0.template)") != nil }
+    var groups: [(String, [Snippet])] { Self.groups(store.library.snippets, query: state.query) }
+
+    /// The snippets shown for a search, grouped and in list order; the arrow keys walk them too.
+    static func groups(_ snippets: [Snippet], query: String) -> [(String, [Snippet])] {
+        let filtered = snippets.filter { query.isEmpty || FuzzySearch.score(query, in: "\($0.name) \($0.abbreviation) \($0.template)") != nil }
         return Dictionary(grouping: filtered) { $0.group.isEmpty ? "Snippets" : $0.group }
             .sorted { $0.key < $1.key }.map { ($0.key, $0.value.sorted { $0.name < $1.name }) }
     }
 
     var body: some View {
-        List(selection: $state.selection) {
-            ForEach(groups, id: \.0) { group, snippets in
-                Section(group) {
-                    ForEach(snippets) { snippet in
-                        HStack {
-                            Text(snippet.name)
-                            Spacer()
-                            if !snippet.abbreviation.isEmpty { Text(snippet.abbreviation).font(.caption.monospaced()).foregroundStyle(.secondary) }
-                        }
-                        .tag(snippet.id)
-                        .contextMenu {
-                            Button("Copy") { Paster.write(text: SnippetPaster.expand(snippet, inputs: [:])) }
-                            Button("Delete", role: .destructive) { store.deleteSnippet(snippet.id) }
+        ScrollViewReader { proxy in
+            List(selection: $state.selection) {
+                ForEach(groups, id: \.0) { group, snippets in
+                    Section(group) {
+                        ForEach(snippets) { snippet in
+                            HStack {
+                                Text(snippet.name)
+                                Spacer()
+                                if !snippet.abbreviation.isEmpty { Text(snippet.abbreviation).font(.caption.monospaced()).foregroundStyle(.secondary) }
+                            }
+                            .tag(snippet.id)
+                            .contextMenu {
+                                Button("Copy") { Paster.write(text: SnippetPaster.expand(snippet, inputs: [:])) }
+                                Button("Delete", role: .destructive) { store.deleteSnippet(snippet.id) }
+                            }
                         }
                     }
                 }
             }
+            .revealing(state.reveal, with: proxy)
         }
         .searchable(text: $state.query, placement: .toolbar, prompt: "Search Snippets")
         .onDeleteCommand { for id in state.selection { store.deleteSnippet(id) } }
