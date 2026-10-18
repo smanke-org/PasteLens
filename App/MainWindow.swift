@@ -364,6 +364,13 @@ struct MainView: View {
             .navigationSplitViewColumnWidth(min: 280, ideal: 360)
         } detail: {
             detail
+                .toolbar {
+                    ToolbarSpacer(.fixed)
+                    ToolbarItem {
+                        Button { SettingsWindow.shared.show() } label: { Label("Settings", systemImage: "gearshape") }
+                            .help("Open PasteLens Settings")
+                    }
+                }
         }
         .sheet(item: $state.editingPastebin) { PastebinEditor(bin: $0) }
         .sheet(item: $state.editingSmart) { SmartPastebinEditor(bin: $0) }

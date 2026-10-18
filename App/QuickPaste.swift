@@ -447,6 +447,11 @@ struct QuickPasteView: View {
                     Text("Release to paste").font(.caption).padding(.horizontal, 6).padding(.vertical, 2)
                         .background(.tint.opacity(0.2), in: .capsule)
                 }
+                Button {
+                    QuickPastePanel.shared.close()
+                    SettingsWindow.shared.show()
+                } label: { Image(systemName: "gearshape").font(.title3).foregroundStyle(.secondary) }
+                    .buttonStyle(.plain).help("Open PasteLens Settings")
             }
             if model.filterMode == nil {
                 ScrollView(.horizontal, showsIndicators: false) {
