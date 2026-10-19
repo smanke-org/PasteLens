@@ -199,6 +199,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         edit.addItem(withTitle: "Find", action: #selector(NSResponder.performTextFinderAction(_:)), keyEquivalent: "f").tag = 1
         editItem.submenu = edit
         menu.insertItem(editItem, at: 1)
+        // Help menu, with the standard ⌘? (macOS adds its search field).
+        let helpItem = NSMenuItem()
+        let help = NSMenu(title: "Help")
+        let open = NSMenuItem(title: "\(AppInfo.name) Help", action: #selector(showHelp), keyEquivalent: "?")
+        open.target = self
+        help.addItem(open)
+        helpItem.submenu = help
+        menu.addItem(helpItem)
+        NSApp.helpMenu = help
         return menu
     }
 
@@ -293,6 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        menu.addItem(item("\(AppInfo.name) Help", #selector(showHelp), symbol: "questionmark.circle"))
         menu.addItem(item("Settings…", #selector(showSettings), key: ","))
         #if !APPSTORE
         if let staged = AutoUpdater.shared.staged {
@@ -326,6 +336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Actions
 
     @objc func quickPaste() { QuickPastePanel.shared.show() }
+    @objc func showHelp() { HelpWindow.shared.show() }
     @objc func showMain() { MainWindow.shared.show() }
     @objc func showStack() { StackWindow.shared.toggle() }
     @objc func togglePause() { Preferences.shared.paused.toggle() }

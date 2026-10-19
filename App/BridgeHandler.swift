@@ -215,6 +215,9 @@ enum BridgeHandler {
             case "activity": MainWindow.shared.state.section = .activity; MainWindow.shared.state.activityMac = args["mac"]; MainWindow.shared.show()
             case "stack": StackWindow.shared.show()
             case "welcome": WelcomeWindow.shared.show()
+            case "help":
+                HelpWindow.shared.show(topic: args["topic"])
+                if let query = args["query"] { HelpWindow.shared.state.query = query }
             case "close": NSApp.windows.forEach { $0.orderOut(nil) }
             default: SettingsWindow.shared.show(tab: args["window"])
             }
@@ -290,6 +293,43 @@ enum BridgeHandler {
             SyncEngine.shared.deleteCloudData()
             try? await Task.sleep(for: .seconds(3))
             return ["ok": true]
+        case "debug-snapshot":
+            // Renders one of PasteLens's own windows to a PNG, for checking layout.
+            guard let title = args["title"], let path = args["path"],
+                  let window = NSApp.windows.first(where: { $0.isVisible && $0.title == title }),
+                  let view = window.contentView?.superview,
+                  let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return ["ok": false] }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            return ["ok": FileManager.default.fileExists(atPath: path), "size": "\(Int(view.bounds.width))x\(Int(view.bounds.height))"]
+        case "debug-press-help":
+            // Clicks the round Help button in the frontmost Settings pane, as a user would.
+            func find(_ view: NSView) -> NSButton? {
+                if let button = view as? NSButton, button.bezelStyle == .helpButton, !button.isHiddenOrHasHiddenAncestor { return button }
+                for sub in view.subviews { if let hit = find(sub) { return hit } }
+                return nil
+            }
+            guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentViewController is SettingsTabs }),
+                  let root = window.contentView, let button = find(root) else { return ["pressed": false] }
+            button.performClick(nil)
+            return ["pressed": true, "pane": window.title]
+        case "debug-help":
+            // Every topic, with any {hotkey:} token left unresolved, and the search's matches.
+            let query = (args["query"] ?? "").lowercased()
+            return ["topics": Help.topics.map { topic in
+                let text = topic.blocks.map(\.searchText).joined(separator: " ")
+                return ["id": topic.id, "title": topic.title, "unresolved": text.contains("{hotkey:"),
+                        "matches": query.isEmpty || text.lowercased().contains(query) || topic.title.lowercased().contains(query)]
+            }, "selection": HelpWindow.shared.state.selection ?? "", "visible": HelpWindow.shared.window?.isVisible == true,
+               "sidebarRows": { () -> Int in
+                   func rows(_ view: NSView) -> Int? {
+                       if let table = view as? NSTableView { return table.numberOfRows }
+                       for sub in view.subviews { if let n = rows(sub) { return n } }
+                       return nil
+                   }
+                   return HelpWindow.shared.window?.contentView.flatMap(rows) ?? -1
+               }(),
+               "shortcuts": Help.resolve(HotKeyAction.allCases.map { "\($0.title)={hotkey:\($0.rawValue)}" }.joined(separator: "; "))]
         case "debug-menu":
             let menu = NSMenu()
             (NSApp.delegate as? AppDelegate)?.menuNeedsUpdate(menu)
