@@ -45,6 +45,7 @@ struct NumberField: View {
 struct GeneralSettings: View {
     @State private var prefs = Preferences.shared
     @State private var presence = PresenceSettings.shared
+    @State private var hub = MenuHub.shared
     @State private var login = LaunchAtLogin.shared
     @State private var confirmReset = false
     @State private var trusted = Paster.trusted
@@ -77,6 +78,10 @@ struct GeneralSettings: View {
                 Toggle("Show in menu bar", isOn: $presence.showInMenuBar)
                 Toggle("List recent clippings in the menu bar menu", isOn: $prefs.menuRecents)
                     .disabled(!presence.showInMenuBar)
+                #if !APPSTORE
+                Toggle("Put in ToolHUD’s menu while ToolHUD is running", isOn: $hub.foldIntoToolHUD)
+                    .help("ToolHUD shows this menu as a submenu of its own, and PasteLens’s icon leaves the menu bar until ToolHUD quits.")
+                #endif
                 if !presence.showInDock && !presence.showInMenuBar {
                     Text(AppPresence.hiddenEverywhereNote(appName: "PasteLens", settingsName: "Settings"))
                         .font(.callout).foregroundStyle(.secondary)

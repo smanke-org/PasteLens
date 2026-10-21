@@ -41,9 +41,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         step("bridge")
 
         setUpStatusItem()
+        // ToolHUD can take the menu into its own while it runs.
         NotificationCenter.default.addObserver(forName: AppPresence.menuBarDidChange, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { [weak self] in self?.statusItem?.isVisible = AppPresence.showInMenuBar }
+            MainActor.assumeIsolated { [weak self] in self?.statusItem?.isVisible = MenuHub.shared.showsOwnIcon }
         }
+        #if !APPSTORE
+        // A sandboxed build can't name the message port, so the App Store version stays out.
+        MenuHub.shared.start(menu: { [weak self] in
+            let menu = NSMenu()
+            self?.menuNeedsUpdate(menu)
+            return menu
+        }, icon: { [weak self] in self?.statusItem?.button?.image })
+        #endif
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { SyncEngine.shared.pull() }
         }
@@ -216,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         item.menu = menu
-        item.isVisible = AppPresence.showInMenuBar
+        item.isVisible = MenuHub.shared.showsOwnIcon
         let image = NSImage(systemSymbolName: "list.clipboard", accessibilityDescription: AppInfo.name)
         image?.isTemplate = true
         item.button?.image = image

@@ -74,6 +74,7 @@ enum Help {
             .heading("What gets recorded"),
             .text("Text, links, colors, images and files you copy. Images and files can be switched off in Settings › History. Copies from password managers are ignored automatically, and anything that looks like a secret is hidden and deleted soon after. See Privacy and Secrets."),
             .tip("Every shortcut on these pages that shows your own keys can be changed in Settings › Shortcuts."),
+            .tip("While ToolHUD is running, PasteLens's menu moves into ToolHUD's menu bar menu as a submenu, and the icon here steps aside until ToolHUD quits. To keep the icon, turn off \"Put in ToolHUD's menu while ToolHUD is running\" in Settings."),
         ]),
 
         HelpTopic(id: "quick-paste", title: "Quick Paste", symbol: "magnifyingglass", blocks: [
