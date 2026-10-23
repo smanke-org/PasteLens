@@ -72,7 +72,7 @@ enum Help {
             .heading("Allow pasting"),
             .text("To paste into other apps, PasteLens presses ⌘V for you, which needs Accessibility permission (macOS 27 calls it Device Control). Without it, PasteLens still records and copies; you press ⌘V yourself. If the menu bar menu shows \"Allow Pasting into Apps…\", choose it to open the right Settings pane."),
             .heading("What gets recorded"),
-            .text("Text, links, colors, images and files you copy. Images and files can be switched off in Settings › History. Copies from password managers are ignored automatically, and anything that looks like a secret is hidden and deleted soon after. See Privacy and Secrets."),
+            .text("Text, links, colors, images and files you copy. Copies from your iPhone, iPad or other Macs arrive through Universal Clipboard and are recorded too, labeled \"Universal Clipboard\". Images, files and Universal Clipboard can each be switched off in Settings › History. Copies from password managers are ignored automatically, and anything that looks like a secret is hidden and deleted soon after. See Privacy and Secrets."),
             .tip("Every shortcut on these pages that shows your own keys can be changed in Settings › Shortcuts."),
             .tip("While ToolHUD is running, PasteLens's menu moves into ToolHUD's menu bar menu as a submenu, and the icon here steps aside until ToolHUD quits. To keep the icon, turn off \"Put in ToolHUD's menu while ToolHUD is running\" in Settings."),
         ]),
@@ -264,7 +264,7 @@ enum Help {
             .heading("\"Skipped a large clipping\" in the menu"),
             .text("Copies larger than the limit in Settings › History (\"Ignore clippings larger than\") aren't recorded, to keep PasteLens fast. Raise the limit, or copy a smaller part."),
             .heading("Something copied isn't in History"),
-            .text("The app may be ignored (Settings › History), recording may be paused, or the copy looked like a secret (Settings › Privacy)."),
+            .text("The app may be ignored (Settings › History), recording may be paused, or the copy looked like a secret (Settings › Privacy). A copy from another device appears once Universal Clipboard has finished bringing it over; if the transfer fails, it isn't recorded."),
         ]),
     ] }
 }

@@ -186,9 +186,13 @@ struct HistorySettings: View {
                 Text("Pastes into the app you were using when you opened the window, then closes the window.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Record") {
+            Section {
                 Toggle("Images", isOn: $prefs.captureImages)
                 Toggle("Files and folders", isOn: $prefs.captureFiles)
+                Toggle("Universal Clipboard", isOn: $prefs.captureUniversal)
+            } header: { Text("Record") } footer: {
+                Text("Universal Clipboard brings copies from your iPhone, iPad or other Macs. They're fetched in the background, so a slow transfer never holds up PasteLens.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 ForEach(prefs.ignoredApps, id: \.self) { bundleID in

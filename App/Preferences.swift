@@ -21,6 +21,7 @@ final class Preferences {
         static let ignoredApps = "history.ignoredApps"
         static let captureImages = "history.captureImages"
         static let captureFiles = "history.captureFiles"
+        static let captureUniversal = "history.captureUniversalClipboard"
         static let paused = "capture.paused"
         static let alwaysPlain = "paste.alwaysPlain"
         static let releaseToPaste = "paste.releaseToPaste"
@@ -46,7 +47,7 @@ final class Preferences {
     /// bar choices stay per Mac.
     static let syncedKeys: [String] = [
         Key.maxClippings, Key.maxDays, Key.unlimited, Key.maxClipMB, Key.ignoredApps, Key.captureImages, Key.captureFiles,
-        Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.windowPaste, Key.menuRecents, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
+        Key.captureUniversal,        Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.windowPaste, Key.menuRecents, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
         Key.sounds, Key.appearance, Key.detectSensitive, Key.sensitiveMinutes, Key.ocr, Key.linkPreviews, Key.expansion,
         Key.syncMaxClipMB, "updatePolicy", UpdateInterval.valueKey, UpdateInterval.unitKey,
     ] + HotKeyAction.allCases.map { Key.hotKeyPrefix + $0.rawValue }
@@ -61,6 +62,8 @@ final class Preferences {
     var ignoredApps: [String] { didSet { save(Key.ignoredApps, ignoredApps) } }
     var captureImages: Bool { didSet { save(Key.captureImages, captureImages) } }
     var captureFiles: Bool { didSet { save(Key.captureFiles, captureFiles) } }
+    /// Copies made on an iPhone, iPad or another Mac and handed over by Universal Clipboard.
+    var captureUniversal: Bool { didSet { save(Key.captureUniversal, captureUniversal) } }
     var paused: Bool { didSet { defaults.set(paused, forKey: Key.paused) } }
 
     // MARK: Pasting
@@ -118,7 +121,7 @@ final class Preferences {
     private init() {
         defaults.register(defaults: [
             Key.maxClippings: 1_000, Key.maxDays: 0, Key.unlimited: false, Key.maxClipMB: 50.0, Key.ignoredApps: [String](),
-            Key.captureImages: true, Key.captureFiles: true, Key.alwaysPlain: false, Key.releaseToPaste: false,
+            Key.captureImages: true, Key.captureFiles: true, Key.captureUniversal: true, Key.alwaysPlain: false, Key.releaseToPaste: false,
             Key.moveToTop: true, Key.windowPaste: WindowPaste.both.rawValue, Key.menuRecents: true, Key.rowLines: 1, Key.quickPasteAtMouse: true, Key.quickPasteCount: 9, Key.sounds: true,
             Key.detectSensitive: true, Key.sensitiveMinutes: 2, Key.ocr: true, Key.linkPreviews: true, Key.expansion: false,
             Key.syncContents: true, Key.syncMaxClipMB: 25.0,
@@ -130,6 +133,7 @@ final class Preferences {
         ignoredApps = defaults.stringArray(forKey: Key.ignoredApps) ?? []
         captureImages = defaults.bool(forKey: Key.captureImages)
         captureFiles = defaults.bool(forKey: Key.captureFiles)
+        captureUniversal = defaults.bool(forKey: Key.captureUniversal)
         paused = defaults.bool(forKey: Key.paused)
         alwaysPlain = defaults.bool(forKey: Key.alwaysPlain)
         releaseToPaste = defaults.bool(forKey: Key.releaseToPaste)
@@ -190,6 +194,7 @@ final class Preferences {
         if ignoredApps != fresh.ignoredApps { ignoredApps = fresh.ignoredApps }
         if captureImages != fresh.captureImages { captureImages = fresh.captureImages }
         if captureFiles != fresh.captureFiles { captureFiles = fresh.captureFiles }
+        if captureUniversal != fresh.captureUniversal { captureUniversal = fresh.captureUniversal }
         if alwaysPlain != fresh.alwaysPlain { alwaysPlain = fresh.alwaysPlain }
         if releaseToPaste != fresh.releaseToPaste { releaseToPaste = fresh.releaseToPaste }
         if moveToTop != fresh.moveToTop { moveToTop = fresh.moveToTop }
@@ -217,7 +222,7 @@ final class Preferences {
         let maxClippings, maxDays, rowLines, quickPasteCount, sensitiveMinutes: Int
         let maxClipMB, syncMaxClipMB: Double
         let ignoredApps: [String]
-        let unlimited, captureImages, captureFiles, alwaysPlain, releaseToPaste, moveToTop, quickPasteAtMouse, sounds,
+        let unlimited, captureImages, captureFiles, captureUniversal, alwaysPlain, releaseToPaste, moveToTop, quickPasteAtMouse, sounds,
             detectSensitive, ocr, linkPreviews, expansion: Bool
         init(_ d: UserDefaults) {
             maxClippings = d.integer(forKey: Key.maxClippings); maxDays = d.integer(forKey: Key.maxDays)
@@ -226,6 +231,7 @@ final class Preferences {
             sensitiveMinutes = d.integer(forKey: Key.sensitiveMinutes); maxClipMB = d.double(forKey: Key.maxClipMB)
             syncMaxClipMB = d.double(forKey: Key.syncMaxClipMB); ignoredApps = d.stringArray(forKey: Key.ignoredApps) ?? []
             captureImages = d.bool(forKey: Key.captureImages); captureFiles = d.bool(forKey: Key.captureFiles)
+            captureUniversal = d.bool(forKey: Key.captureUniversal)
             alwaysPlain = d.bool(forKey: Key.alwaysPlain); releaseToPaste = d.bool(forKey: Key.releaseToPaste)
             moveToTop = d.bool(forKey: Key.moveToTop); quickPasteAtMouse = d.bool(forKey: Key.quickPasteAtMouse)
             sounds = d.bool(forKey: Key.sounds); detectSensitive = d.bool(forKey: Key.detectSensitive)
