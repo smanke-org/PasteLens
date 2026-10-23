@@ -103,6 +103,7 @@ enum Help {
                 ("⌘-click / ⇧-click", "Pick several clippings"),
                 ("⌘A", "Pick everything listed"),
                 ("⌃1 – ⌃9", "Move the picked (or selected) clippings to pastebin 1 to 9 in the left column"),
+                ("Drag", "Drag a clipping (or your picks) onto a pastebin in the left column to move it there"),
                 ("⌘P", "Pin or unpin"),
                 ("⌘S", "Add to the Stack"),
                 ("⌘O", "Show it in the History window"),
@@ -123,6 +124,7 @@ enum Help {
                 ("Tab / ⇧Tab", "Next or previous sidebar section"),
                 ("Return", "Paste the selection into the app you were using"),
                 ("⌃1 – ⌃9", "Move the selected clippings to pastebin 1 to 9"),
+                ("Drag", "Drag the selected clippings onto a pastebin in the sidebar to move them there"),
                 ("⌘S", "Save while editing a clipping"),
                 ("Esc", "Close the window"),
             ]),
@@ -136,6 +138,7 @@ enum Help {
             .text("A smart pastebin fills itself from rules, like a smart folder. Match all or any of: Text, Kind, Source App, Note, Size (KB), Text Length, Age (days) and Pasteboard Type. Examples: links copied this week; anything copied from Xcode; text longer than 2,000 characters."),
             .tip("Give a pastebin its own shortcut (in its edit sheet) to open Quick Paste on just that pastebin."),
             .tip("In Quick Paste and the History window, ⌃1 is your first pastebin, ⌃2 the second, and so on, in sidebar order."),
+            .tip("You can also drag clippings onto a pastebin in the sidebar (or Quick Paste's left column) to move them there. Text dragged in from another app is saved in that pastebin."),
         ]),
 
         HelpTopic(id: "filters", title: "Filters", symbol: "camera.filters", blocks: [

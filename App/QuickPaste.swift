@@ -273,9 +273,17 @@ final class QuickPasteModel {
 
     /// Moves the targets into a pastebin; they leave the list they're in.
     func moveTargets(to bin: Pastebin) {
-        let ids = targets
+        move(targets, from: source.scope, to: bin)
+    }
+
+    /// What dragging a row carries: the picked clippings when the row is one of them, otherwise that row.
+    func dragItem(_ clip: Clipping) -> NSItemProvider {
+        ClipDrag.provider(for: clip, ids: marked.contains(clip.id) ? targets : [clip.id], from: source.scope)
+    }
+
+    func move(_ ids: [UUID], from scope: ClipStore.Scope?, to bin: Pastebin) {
         guard !ids.isEmpty else { return }
-        ClipStore.shared.move(ids, to: bin.id, from: source.scope)
+        ClipStore.shared.move(ids, to: bin.id, from: scope)
         marked = []
         notice = "Moved \(ids.count == 1 ? "1 clipping" : "\(ids.count) clippings") to \(bin.name)"
         selection = min(selection, max(count - 1, 0))
@@ -504,9 +512,24 @@ struct QuickPasteView: View {
                     }
                     .buttonStyle(.plain)
                     .help(Self.chipHelp(source, model))
+                    .modifier(DropOnBin(source: source, model: model))
                 }
             }
             .padding(8)
+        }
+    }
+
+    /// Clippings dropped on a pastebin in the left column move there; History takes no drops.
+    struct DropOnBin: ViewModifier {
+        let source: QuickPasteModel.Source
+        let model: QuickPasteModel
+
+        func body(content: Content) -> some View {
+            if case .pastebin(let id) = source, let bin = model.pastebins.first(where: { $0.id == id }) {
+                content.modifier(PastebinDropTarget(bin: id) { model.move($0.ids, from: $0.scope, to: bin) })
+            } else {
+                content
+            }
         }
     }
 
@@ -540,7 +563,10 @@ struct QuickPasteView: View {
                     }
                 } else {
                     ForEach(Array(model.clips.enumerated()), id: \.element.id) { index, clip in
-                        row(index) { ClipRowContent(clip: clip, lines: Preferences.shared.rowLines, index: index) }
+                        row(index) {
+                            ClipRowContent(clip: clip, lines: Preferences.shared.rowLines, index: index)
+                                .onDrag { model.dragItem(clip) }
+                        }
                     }
                 }
             }
@@ -631,7 +657,7 @@ struct QuickPasteView: View {
 
     static func chipHelp(_ source: QuickPasteModel.Source, _ model: QuickPasteModel) -> String {
         if case .pastebin(let id) = source, let n = model.pastebins.firstIndex(where: { $0.id == id }), n < 9 {
-            return "Show this pastebin. Press ⌃\(n + 1) to move the selected clippings here."
+            return "Show this pastebin. Press ⌃\(n + 1) or drag clippings here to move them."
         }
         return "Show these clippings"
     }

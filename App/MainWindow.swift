@@ -424,16 +424,11 @@ struct Sidebar: View {
                     label(bin.name, bin.symbol, color: BinColor.color(bin.colorName), count: store.count(.pastebin(bin.id)),
                           shortcut: n < 9 ? "⌃\(n + 1)" : nil)
                         .tag(MainState.Section.clips(.pastebin(bin.id)))
-                        .dropDestination(for: String.self) { items, _ in
-                            let ids = items.compactMap(UUID.init(uuidString:)).filter { store.clip($0) != nil }
-                            if !ids.isEmpty {
-                                if case .clips(let scope) = state.section { store.move(ids, to: bin.id, from: scope) } else { store.move(ids, to: bin.id) }
-                                return true
-                            }
-                            // Text dragged in from another app becomes a clipping saved here.
-                            for text in items where UUID(uuidString: text) == nil { store.add(.text(text), inHistory: false, pastebins: [bin.id]) }
-                            return true
-                        }
+                        // Dropping clippings here moves them, like Move to Pastebin.
+                        .modifier(PastebinDropTarget(bin: bin.id, outset: 4) { drag in
+                            store.move(drag.ids, to: bin.id, from: drag.scope)
+                            state.selection.subtract(drag.ids)
+                        })
                         .contextMenu {
                             Button("Edit…") { state.editingPastebin = bin }
                             Button("Delete", role: .destructive) { store.deletePastebin(bin.id) }
@@ -511,7 +506,7 @@ struct ClipList: View {
                     ClipRowContent(clip: clip, lines: max(Preferences.shared.rowLines, 1))
                         .onAppear { if clip.id == items.last?.id, items.count >= limit { limit += 200 } }
                         .tag(clip.id)
-                        .draggable(dragText(clip))
+                        .onDrag { ClipDrag.provider(for: clip, ids: menuTargets(clip), from: scope) }
                 }
             }
             .revealing(state.reveal, with: proxy)
@@ -618,10 +613,6 @@ struct ClipList: View {
     }
 
     func ordered(_ ids: Set<UUID>) -> [UUID] { clips.map(\.id).filter(ids.contains) }
-
-    func dragText(_ clip: Clipping) -> String {
-        store.text(of: clip.id) ?? clip.previewText
-    }
 
     func copySelected() {
         guard let id = state.selection.first, let clip = store.clip(id) else { return }

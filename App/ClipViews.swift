@@ -3,6 +3,7 @@ import LinkPresentation
 import PasteLensKit
 import QuickLookThumbnailing
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Named colors for pastebins.
 enum BinColor {
@@ -361,5 +362,98 @@ struct LinkPreview: NSViewRepresentable {
                 }
             }
         }
+    }
+}
+
+// MARK: - Dragging clippings onto pastebins
+
+extension UTType {
+    /// Clippings dragged inside PasteLens, so dropping them on a pastebin moves them there.
+    static let pasteLensClippings = UTType(exportedAs: "com.smanke.pastelens.clippings")
+}
+
+/// A drag of one or more clippings out of a list. Other apps get the dragged row's text;
+/// a pastebin row in PasteLens gets the clippings themselves.
+@MainActor
+struct ClipDrag {
+    let ids: [UUID]
+    /// The list they're dragged from, as Move to Pastebin needs it.
+    let scope: ClipStore.Scope?
+
+    /// The drag in progress. Drops only happen in this process, so the drop reads it here
+    /// rather than decoding the item.
+    static var active: ClipDrag?
+
+    static func provider(for clip: Clipping, ids: [UUID], from scope: ClipStore.Scope?) -> NSItemProvider {
+        active = ClipDrag(ids: ids, scope: scope)
+        let provider = NSItemProvider(object: (ClipStore.shared.text(of: clip.id) ?? clip.previewText) as NSString)
+        let data = Data(ids.map(\.uuidString).joined(separator: "\n").utf8)
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.pasteLensClippings.identifier, visibility: .ownProcess) { done in
+            done(data, nil)
+            return nil
+        }
+        return provider
+    }
+}
+
+/// Makes a pastebin row take drops: clippings dragged from a PasteLens list move into it,
+/// and text dragged in from another app is saved there. The row highlights while it's a target.
+struct PastebinDropTarget: ViewModifier {
+    let bin: UUID
+    /// How far the highlight reaches past the row's content.
+    var outset: CGFloat = 0
+    let move: (ClipDrag) -> Void
+    @State private var targeted = false
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if targeted { RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.35)).padding(-outset) }
+            }
+            .onDrop(of: [.pasteLensClippings, .plainText], delegate: PastebinDrop(bin: bin, targeted: $targeted, move: move))
+    }
+}
+
+private struct PastebinDrop: DropDelegate {
+    let bin: UUID
+    @Binding var targeted: Bool
+    let move: (ClipDrag) -> Void
+
+    /// The clippings being dragged, when the drag comes from one of PasteLens's lists.
+    @MainActor private func clippings(_ info: DropInfo) -> ClipDrag? {
+        info.hasItemsConforming(to: [.pasteLensClippings]) ? ClipDrag.active : nil
+    }
+
+    @MainActor func validateDrop(info: DropInfo) -> Bool {
+        // Clippings already in this pastebin have nowhere to move.
+        if let drag = clippings(info) { return drag.scope != .pastebin(bin) && !drag.ids.isEmpty }
+        return info.hasItemsConforming(to: [.plainText])
+    }
+
+    @MainActor func dropEntered(info: DropInfo) { targeted = validateDrop(info: info) }
+    @MainActor func dropExited(info: DropInfo) { targeted = false }
+
+    @MainActor func dropUpdated(info: DropInfo) -> DropProposal? {
+        validateDrop(info: info) ? DropProposal(operation: clippings(info) == nil ? .copy : .move) : DropProposal(operation: .forbidden)
+    }
+
+    @MainActor func performDrop(info: DropInfo) -> Bool {
+        targeted = false
+        guard validateDrop(info: info) else { return false }
+        if let drag = clippings(info) {
+            ClipDrag.active = nil
+            move(drag)
+            return true
+        }
+        let bin = bin
+        for provider in info.itemProviders(for: [.plainText]) {
+            _ = provider.loadObject(ofClass: NSString.self) { text, _ in
+                guard let text = text as? String else { return }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { ClipStore.shared.add(.text(text), inHistory: false, pastebins: [bin]) }
+                }
+            }
+        }
+        return true
     }
 }

@@ -191,7 +191,13 @@ enum BridgeHandler {
                                                              "pastes": $0.activity?.lifetime(.paste) ?? -1] }]
         case "debug-show":
             switch args["window"] ?? "" {
-            case "quickpaste": QuickPastePanel.shared.show()
+            case "quickpaste":
+                QuickPastePanel.shared.show()
+                // Clippings to pick, as ⌘-click would, separated by commas. The search field writes
+                // its text back once it has focus, which clears picks, so pick after that.
+                if let ids = args["pick"]?.split(separator: ",").compactMap({ UUID(uuidString: String($0)) }) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { QuickPastePanel.shared.model.marked = Set(ids) }
+                }
             case "quickpaste-filter":
                 QuickPastePanel.shared.show()
                 let model = QuickPastePanel.shared.model
@@ -222,7 +228,10 @@ enum BridgeHandler {
             default: SettingsWindow.shared.show(tab: args["window"])
             }
             if args["retina"] == "true" { moveWindowsToRetinaScreen() }
-            if let id = args["select"].flatMap(UUID.init(uuidString:)) { MainWindow.shared.state.selection = [id] }
+            // One clipping id, or several separated by commas.
+            if let ids = args["select"]?.split(separator: ",").compactMap({ UUID(uuidString: String($0)) }), !ids.isEmpty {
+                MainWindow.shared.state.selection = Set(ids)
+            }
             if let name = args["select-filter"], let f = store.filter(named: name) { MainWindow.shared.state.selection = [f.id] }
             if let name = args["select-snippet"], let sn = store.library.snippets.first(where: { $0.name == name }) { MainWindow.shared.state.selection = [sn.id] }
             if let q = args["query"] { MainWindow.shared.state.query = q }
