@@ -80,4 +80,4 @@ swift test          # PasteLensKit: filters, encryption, database, sync merge, i
 
 ## License
 
-© 2026 Steve Manke.
+© 2026 Steve Manke. All rights reserved.
