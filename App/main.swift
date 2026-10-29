@@ -70,8 +70,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         #if !APPSTORE
-        // Test copies (with their own data folder) leave updates to the real app.
-        if ProcessInfo.processInfo.environment["PASTELENS_DATA_FOLDER"] == nil { AutoUpdater.shared.start() }
+        // Test copies (with their own data folder) leave updates to the real app. So do Debug
+        // builds unless an updater test asks: they share the installed app's defaults, and a
+        // stray one stamping update.lastCheck every hour kept the real app from ever checking.
+        let env = ProcessInfo.processInfo.environment
+        #if DEBUG
+        let buildAllows = env["PASTELENS_UPDATE_CHECK_SECONDS"] != nil
+        #else
+        let buildAllows = true
+        #endif
+        if buildAllows && env["PASTELENS_DATA_FOLDER"] == nil { AutoUpdater.shared.start() }
         #endif
         if newInstall {
             AppDefaults.store.set(true, forKey: "welcomed")
