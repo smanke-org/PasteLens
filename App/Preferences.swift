@@ -40,6 +40,7 @@ final class Preferences {
         static let expansion = "snippets.expansion"
         static let syncContents = "sync.contents"
         static let syncMaxClipMB = "sync.maxClipMB"
+        static let confirmQuit = "confirmQuit"
         static let hotKeyPrefix = "hotkey."
     }
 
@@ -49,7 +50,7 @@ final class Preferences {
         Key.maxClippings, Key.maxDays, Key.unlimited, Key.maxClipMB, Key.ignoredApps, Key.captureImages, Key.captureFiles,
         Key.captureUniversal,        Key.alwaysPlain, Key.releaseToPaste, Key.moveToTop, Key.windowPaste, Key.menuRecents, Key.rowLines, Key.quickPasteAtMouse, Key.quickPasteCount,
         Key.sounds, Key.appearance, Key.detectSensitive, Key.sensitiveMinutes, Key.ocr, Key.linkPreviews, Key.expansion,
-        Key.syncMaxClipMB, "updatePolicy", UpdateInterval.valueKey, UpdateInterval.unitKey,
+        Key.syncMaxClipMB, Key.confirmQuit, "updatePolicy", UpdateInterval.valueKey, UpdateInterval.unitKey,
     ] + HotKeyAction.allCases.map { Key.hotKeyPrefix + $0.rawValue }
 
     // MARK: History
@@ -100,6 +101,11 @@ final class Preferences {
     var linkPreviews: Bool { didSet { save(Key.linkPreviews, linkPreviews) } }
     var expansion: Bool { didSet { save(Key.expansion, expansion); ExpansionLensBridge.shared.announce() } }
 
+    // MARK: General
+
+    /// Quitting asks first, so a stray ⌘Q doesn't stop recording your copies.
+    var confirmQuit: Bool { didSet { save(Key.confirmQuit, confirmQuit) } }
+
     // MARK: Sync
 
     var syncContents: Bool { didSet { defaults.set(syncContents, forKey: Key.syncContents) } }
@@ -124,7 +130,7 @@ final class Preferences {
             Key.captureImages: true, Key.captureFiles: true, Key.captureUniversal: true, Key.alwaysPlain: false, Key.releaseToPaste: false,
             Key.moveToTop: true, Key.windowPaste: WindowPaste.both.rawValue, Key.menuRecents: true, Key.rowLines: 1, Key.quickPasteAtMouse: true, Key.quickPasteCount: 9, Key.sounds: true,
             Key.detectSensitive: true, Key.sensitiveMinutes: 2, Key.ocr: true, Key.linkPreviews: true, Key.expansion: false,
-            Key.syncContents: true, Key.syncMaxClipMB: 25.0,
+            Key.syncContents: true, Key.syncMaxClipMB: 25.0, Key.confirmQuit: true,
         ])
         maxClippings = defaults.integer(forKey: Key.maxClippings)
         maxDays = defaults.integer(forKey: Key.maxDays)
@@ -152,6 +158,7 @@ final class Preferences {
         expansion = defaults.bool(forKey: Key.expansion)
         syncContents = defaults.bool(forKey: Key.syncContents)
         syncMaxClipMB = defaults.double(forKey: Key.syncMaxClipMB)
+        confirmQuit = defaults.bool(forKey: Key.confirmQuit)
         loadHotKeys()
     }
 
@@ -213,6 +220,7 @@ final class Preferences {
         if linkPreviews != fresh.linkPreviews { linkPreviews = fresh.linkPreviews }
         if expansion != fresh.expansion { expansion = fresh.expansion }
         if syncMaxClipMB != fresh.syncMaxClipMB { syncMaxClipMB = fresh.syncMaxClipMB }
+        if confirmQuit != fresh.confirmQuit { confirmQuit = fresh.confirmQuit }
         loadHotKeys()
         HotKeyCenter.shared.apply()
         SnippetExpander.shared.refresh()
@@ -223,7 +231,7 @@ final class Preferences {
         let maxClipMB, syncMaxClipMB: Double
         let ignoredApps: [String]
         let unlimited, captureImages, captureFiles, captureUniversal, alwaysPlain, releaseToPaste, moveToTop, quickPasteAtMouse, sounds,
-            detectSensitive, ocr, linkPreviews, expansion: Bool
+            detectSensitive, ocr, linkPreviews, expansion, confirmQuit: Bool
         init(_ d: UserDefaults) {
             maxClippings = d.integer(forKey: Key.maxClippings); maxDays = d.integer(forKey: Key.maxDays)
             unlimited = d.bool(forKey: Key.unlimited)
@@ -236,6 +244,7 @@ final class Preferences {
             moveToTop = d.bool(forKey: Key.moveToTop); quickPasteAtMouse = d.bool(forKey: Key.quickPasteAtMouse)
             sounds = d.bool(forKey: Key.sounds); detectSensitive = d.bool(forKey: Key.detectSensitive)
             ocr = d.bool(forKey: Key.ocr); linkPreviews = d.bool(forKey: Key.linkPreviews); expansion = d.bool(forKey: Key.expansion)
+            confirmQuit = d.bool(forKey: Key.confirmQuit)
         }
     }
 

@@ -91,6 +91,8 @@ struct GeneralSettings: View {
                 Toggle("Open PasteLens at login", isOn: Binding(get: { login.isEnabled }, set: { login.set($0) }))
                 if login.needsApproval { Button("Allow in Login Items…") { login.openLoginItemsSettings() } }
                 if let error = login.lastError { Text(error).font(.callout).foregroundStyle(.red) }
+                Toggle("Ask before quitting", isOn: $prefs.confirmQuit)
+                    .help("Quitting PasteLens asks first, so a stray ⌘Q doesn't stop it recording what you copy.")
                 Toggle("Play sounds", isOn: $prefs.sounds)
                 Toggle("Pause recording", isOn: $prefs.paused)
             }

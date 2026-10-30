@@ -289,7 +289,7 @@ enum UpdateController {
                           destination, requirement, staging.path]
         try task.run()
 
-        NSApp.terminate(nil)
+        QuitConfirmation.quitNow()
     }
 
     // MARK: - Helpers
