@@ -112,6 +112,9 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
             ExpansionLensBridge.notificationCategory,
         ])
         if policy != .off { requestNotificationPermission() }
+        // Before "welcomed" is set for a new install, and before the automatic-update record is read.
+        WhatsNew.shared.noteLaunch(newInstall: !AppDefaults.store.bool(forKey: "welcomed"),
+                                   autoInstalledFrom: AppDefaults.store.string(forKey: Self.installedFromKey))
         announceIfJustUpdated()
 
         checkIfDue()
@@ -285,7 +288,7 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
         AppDefaults.store.removeObject(forKey: Self.installedFromKey)
         guard from != AppInfo.version else { return }
         notify(id: "updated-\(AppInfo.version)", title: "PasteLens updated to \(AppInfo.version)",
-               body: "It installed itself while your Mac wasn't in use.", installable: false)
+               body: "It installed itself while your Mac wasn't in use. Click to see what's new.", installable: false)
     }
 
     private func notifyAvailable(_ version: String) {
@@ -316,11 +319,14 @@ final class AutoUpdater: NSObject, UNUserNotificationCenterDelegate {
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let category = response.notification.request.content.categoryIdentifier
         let action = response.actionIdentifier
+        let updated = response.notification.request.identifier.hasPrefix("updated-")
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 // Clicking the banner or its Install button opens the usual confirmation,
                 // so the user still sees what they're agreeing to.
                 if category == Self.category { UpdateController.checkForUpdates() }
+                // "Updated": Settings, which shows what changed.
+                if updated { SettingsWindow.shared.show() }
                 if category == ExpansionLensBridge.category { ExpansionLensBridge.handle(action: action) }
             }
         }

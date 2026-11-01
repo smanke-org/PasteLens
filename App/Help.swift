@@ -272,7 +272,22 @@ enum Help {
             .heading("Something copied isn't in History"),
             .text("The app may be ignored (Settings › History), recording may be paused, or the copy looked like a secret (Settings › Privacy). A copy from another device appears once Universal Clipboard has finished bringing it over; if the transfer fails, it isn't recorded."),
         ]),
-    ] }
+    ] + updateTopics }
+
+    /// The App Store updates its own copy, so its build has no Updates page.
+    private static var updateTopics: [HelpTopic] {
+        #if APPSTORE
+        []
+        #else
+        [HelpTopic(id: "updates", title: "Updates", symbol: "arrow.down.circle", blocks: [
+            .text("Settings › General › Updates chooses what PasteLens does when a new version is out: install it automatically while your Mac is idle, ask you first, or not check at all. Check Now looks right away."),
+            .heading("What's new"),
+            .text("The update window shows the notes for the latest releases, with the ones you don't have yet marked New. \"Don't remind me about this version\" is ticked to begin with: click Not Now with it ticked, and PasteLens stops reminding you about that version (Check Now still offers it). Untick it to be reminded again."),
+            .text("After an update that installed itself, Settings shows what changed the next time it opens. Tick \"Don't show this again\" to put it away. What's New… beside Check Now shows the notes any time."),
+            .tip("Settings can be dragged bigger to see more of a pane at once, and keeps the size you choose."),
+        ])]
+        #endif
+    }
 }
 
 // MARK: - Window

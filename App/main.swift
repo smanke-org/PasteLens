@@ -76,6 +76,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugQuitTest.run(how)
             return
         }
+        #if !APPSTORE
+        // The update prompt, What's New and Settings drawn to PNGs; also starts nothing else.
+        if let folder = ProcessInfo.processInfo.environment["PASTELENS_DEBUG_UPDATE_NOTES"] {
+            DebugUpdateNotes.run(folder: folder)
+            return
+        }
+        #endif
         #endif
         let newInstall = !AppDefaults.store.bool(forKey: "welcomed")
 

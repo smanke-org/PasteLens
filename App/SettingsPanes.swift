@@ -107,7 +107,12 @@ struct GeneralSettings: View {
                 if let staged = updater.staged {
                     LabeledContent("Version \(staged.version) is ready") { Button("Install Now") { updater.installNow() } }
                 }
-                LabeledContent("Version \(AppInfo.displayVersion)") { Button("Check Now") { UpdateController.checkForUpdates() } }
+                LabeledContent("Version \(AppInfo.displayVersion)") {
+                    HStack {
+                        Button("What's New…") { SettingsWindow.shared.showWhatsNew() }
+                        Button("Check Now") { UpdateController.checkForUpdates() }
+                    }
+                }
                 if let error = updater.lastError { Text(error).font(.callout).foregroundStyle(.red) }
                 if updater.policy != .off && !updater.notificationsAllowed {
                     LabeledContent {
