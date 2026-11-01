@@ -12,32 +12,41 @@ struct FilterList: View {
     @State private var importReport: String?
 
     var groups: [(String, [Filter])] { Self.groups(store.library.filters, query: state.query) }
+    var pinned: [Filter] { Self.pinned(store.library.filters, query: state.query) }
 
     /// The filters shown for a search, grouped and in list order; the arrow keys walk them too.
     static func groups(_ filters: [Filter], query: String) -> [(String, [Filter])] {
-        let filtered = filters.filter { query.isEmpty || FuzzySearch.score(query, in: "\($0.name) \($0.group)") != nil }
+        let filtered = filters.filter { matches($0, query) }
         return Dictionary(grouping: filtered) { $0.group.isEmpty ? "My Filters" : $0.group }
             .sorted { $0.key < $1.key }.map { ($0.key, $0.value.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) }
+    }
+
+    /// The pinned filters shown above the groups. They're listed in their group too.
+    static func pinned(_ filters: [Filter], query: String) -> [Filter] { filters.pinned.filter { matches($0, query) } }
+
+    /// Every row in list order, each filter once (where it first appears), for the arrow keys.
+    static func orderedIDs(_ filters: [Filter], query: String) -> [UUID] {
+        var seen = Set<UUID>()
+        return (pinned(filters, query: query) + groups(filters, query: query).flatMap(\.1)).map(\.id).filter { seen.insert($0).inserted }
+    }
+
+    static func matches(_ filter: Filter, _ query: String) -> Bool {
+        query.isEmpty || FuzzySearch.score(query, in: "\(filter.name) \(filter.group)") != nil
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             List(selection: $state.selection) {
+                if !pinned.isEmpty {
+                    Section("Pinned") {
+                        // Dragging reorders; not while searching, when some pinned rows are hidden.
+                        ForEach(pinned) { row($0) }
+                            .onMove(perform: state.query.isEmpty ? { store.movePinnedFilters(from: $0, to: $1) } : nil)
+                    }
+                }
                 ForEach(groups, id: \.0) { group, filters in
                     Section(group) {
-                        ForEach(filters) { filter in
-                            HStack {
-                                Text(filter.name)
-                                Spacer()
-                                if let key = filter.hotKey { Text(key.display).font(.caption).foregroundStyle(.secondary) }
-                            }
-                            .tag(filter.id)
-                            .contextMenu {
-                                Button("Duplicate") { duplicate(filter) }
-                                Button("Export…") { export(filter) }
-                                Button("Delete", role: .destructive) { store.deleteFilter(filter.id) }
-                            }
-                        }
+                        ForEach(filters) { row($0) }
                     }
                 }
             }
@@ -61,6 +70,22 @@ struct FilterList: View {
         .navigationTitle("Filters")
     }
 
+    func row(_ filter: Filter) -> some View {
+        HStack {
+            Text(filter.name)
+            Spacer()
+            if let key = filter.hotKey { Text(key.display).font(.caption).foregroundStyle(.secondary) }
+        }
+        .tag(filter.id)
+        .contextMenu {
+            Button(filter.isPinned ? "Unpin" : "Pin to Top") { store.setFilterPinned(filter.id, !filter.isPinned) }
+            Divider()
+            Button("Duplicate") { duplicate(filter) }
+            Button("Export…") { export(filter) }
+            Button("Delete", role: .destructive) { store.deleteFilter(filter.id) }
+        }
+    }
+
     func add() {
         let filter = Filter(name: "New Filter", steps: [FilterStep(.findReplace)])
         store.upsertFilter(filter)
@@ -73,6 +98,7 @@ struct FilterList: View {
         copy.name += " Copy"
         copy.builtInKey = nil
         copy.hotKey = nil
+        copy.pinOrder = nil
         store.upsertFilter(copy)
         state.selection = [copy.id]
     }
@@ -114,6 +140,10 @@ struct FilterEditor: View {
                     Toggle("Show in Quick Paste", isOn: $filter.showInQuickPaste)
                     Toggle("Show in Menu Bar Menu", isOn: $filter.showInMenu)
                         .help("List this filter under Filters in PasteLens's menu bar menu. Choosing it there filters the clipboard and pastes the result.")
+                    // Bound to the store, since the list's Pin to Top changes it while this editor is open.
+                    Toggle("Pinned", isOn: Binding(get: { store.library.filters.first { $0.id == filter.id }?.isPinned ?? false },
+                                                   set: { store.setFilterPinned(filter.id, $0) }))
+                        .help("Show this filter at the top of the Filters list, as well as in its group. Drag pinned filters to reorder them.")
                     LabeledContent("Shortcut") { ShortcutRecorder(hotKey: $key) }
                 }
                 Section {
@@ -165,7 +195,11 @@ struct FilterEditor: View {
     }
 
     func save() {
-        if store.library.filters.first(where: { $0.id == filter.id }) != filter { store.upsertFilter(filter) }
+        let stored = store.library.filters.first { $0.id == filter.id }
+        // The pin is changed outside the editor, so keep the store's.
+        var edited = filter
+        edited.pinOrder = stored?.pinOrder
+        if stored != edited { store.upsertFilter(edited) }
     }
 
     func run() {

@@ -333,13 +333,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        // Filters chosen with "Show in Menu Bar Menu", in a submenu.
+        // Filters chosen with "Show in Menu Bar Menu", in a submenu: pinned ones first, in their pinned order.
         let filters = ClipStore.shared.library.filters.filter(\.showInMenu)
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let pinned = filters.pinned
+        let others = filters.filter { !$0.isPinned }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         if !filters.isEmpty {
             menu.addItem(.separator())
             let submenu = NSMenu(title: "Filters")
-            for filter in filters {
+            for filter in pinned + others {
+                if filter.id == others.first?.id && !pinned.isEmpty { submenu.addItem(.separator()) }
                 let entry = item(filter.name, #selector(runFilter(_:)), hotKey: filter.hotKey.map(HotKey.init))
                 entry.representedObject = filter.id
                 entry.toolTip = filter.details.isEmpty ? "Filter the clipboard and paste the result" : filter.details

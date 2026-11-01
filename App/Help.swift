@@ -157,6 +157,8 @@ enum Help {
                 ("Apple Intelligence", "Summarize, fix grammar, rewrite, change tone"),
                 ("JavaScript / Shell", "Your own code: `text` in, result out"),
             ]),
+            .heading("Pinned filters"),
+            .text("Right-click a filter in the Filters list and choose Pin to Top, or turn on Pinned in its editor. Pinned filters sit in a Pinned section at the top of the list and stay in their group below too. Drag them up and down to set their order, which the Copy with Filter menu and the menu bar menu's Filters submenu follow."),
             .tip("Coming from Pastebot? Import its filters in Settings › Advanced."),
         ]),
 

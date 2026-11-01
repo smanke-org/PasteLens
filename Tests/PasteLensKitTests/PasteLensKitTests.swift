@@ -498,3 +498,32 @@ import Testing
         #expect(try JSONDecoder().decode(Filter.self, from: JSONEncoder().encode(filter)).showInMenu)
     }
 }
+
+@Suite struct FilterPinTests {
+    @Test func pinOrderDecodesAndRoundTrips() throws {
+        var filter = Filter(name: "Upper", steps: [FilterStep(.changeCase)])
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(filter)) as! [String: Any]
+        #expect(json["pinOrder"] == nil)
+        #expect(try !JSONDecoder().decode(Filter.self, from: JSONSerialization.data(withJSONObject: json)).isPinned)
+        filter.pinOrder = 2.5
+        #expect(try JSONDecoder().decode(Filter.self, from: JSONEncoder().encode(filter)).pinOrder == 2.5)
+    }
+
+    @Test func pinnedSortsByOrderThenName() {
+        func make(_ name: String, _ order: Double?) -> Filter {
+            var filter = Filter(name: name, steps: [])
+            filter.pinOrder = order
+            return filter
+        }
+        let filters = [make("C", 1), make("A", nil), make("B", 0), make("D", 1)]
+        #expect(filters.pinned.map(\.name) == ["B", "C", "D"])
+    }
+
+    @Test func betweenKeys() {
+        #expect(PinOrder.between(nil, nil) == 0)
+        #expect(PinOrder.between(3, nil) == 4)
+        #expect(PinOrder.between(3.5, nil) == 4)
+        #expect(PinOrder.between(nil, 0) == -1)
+        #expect(PinOrder.between(1, 2) == 1.5)
+    }
+}

@@ -19,6 +19,10 @@ public struct Filter: Codable, Identifiable, Hashable, Sendable {
         get { inMenu ?? false }
         set { inMenu = newValue }
     }
+    /// Where the filter sits among the pinned filters at the top of the Filters list, or nil when
+    /// it isn't pinned. A fraction, so dragging one filter rewrites (and syncs) only that filter.
+    public var pinOrder: Double?
+    public var isPinned: Bool { pinOrder != nil }
 
     public init(id: UUID = UUID(), name: String, details: String = "", group: String = "", steps: [FilterStep],
                 builtInKey: String? = nil) {
@@ -34,6 +38,25 @@ public struct Filter: Codable, Identifiable, Hashable, Sendable {
 
     /// Whether every step runs on its own, without the app's services (translation, AI, scripts).
     public var isLocal: Bool { steps.allSatisfy(\.kind.isLocal) }
+}
+
+extension Array where Element == Filter {
+    /// The pinned filters, in the order they were dragged into.
+    public var pinned: [Filter] {
+        filter(\.isPinned).sorted { ($0.pinOrder!, $0.name) < ($1.pinOrder!, $1.name) }
+    }
+}
+
+public enum PinOrder {
+    /// An order key that sorts between `before` and `after` (either may be missing, at an end).
+    public static func between(_ before: Double?, _ after: Double?) -> Double {
+        switch (before, after) {
+        case (nil, nil): 0
+        case (let a?, nil): a.rounded(.down) + 1
+        case (nil, let b?): b.rounded(.up) - 1
+        case (let a?, let b?): (a + b) / 2
+        }
+    }
 }
 
 /// One operation in a filter. Options are generic slots whose meaning depends on `kind`,

@@ -357,6 +357,14 @@ enum BridgeHandler {
             filter.showInMenu = args["value"] != "false"
             store.upsertFilter(filter)
             return ["ok": true]
+        case "debug-filter-pin":
+            // Pins or unpins a filter, as its Pin to Top menu item does; --to N then drags it to row N of the pinned list.
+            guard let name = args["name"], let filter = store.filter(named: name) else { return ["ok": false] }
+            store.setFilterPinned(filter.id, args["value"] != "false")
+            if let to = args["to"].flatMap(Int.init), let from = store.library.filters.pinned.firstIndex(where: { $0.id == filter.id }) {
+                store.movePinnedFilters(from: [from], to: to)
+            }
+            return ["ok": true, "pinned": store.library.filters.pinned.map(\.name)]
         case "debug-set":
             if let key = args["key"], let value = args["value"] {
                 let parsed: Any = value == "true" ? true : value == "false" ? false : Int(value).map { $0 as Any } ?? value

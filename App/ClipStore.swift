@@ -519,6 +519,34 @@ final class ClipStore {
         HotKeyCenter.shared.apply()
     }
 
+    /// Pins a filter to the top of the Filters list (at the bottom of the pinned ones), or unpins it.
+    func setFilterPinned(_ id: UUID, _ pinned: Bool) {
+        guard var filter = library.filters.first(where: { $0.id == id }), filter.isPinned != pinned else { return }
+        filter.pinOrder = pinned ? PinOrder.between(library.filters.pinned.last?.pinOrder, nil) : nil
+        upsertFilter(filter)
+    }
+
+    /// Drags pinned filters to a new place in the pinned list. Only the moved filters get new keys,
+    /// unless two keys have run out of room between them, when the whole list is renumbered.
+    func movePinnedFilters(from source: IndexSet, to offset: Int) {
+        var list = library.filters.pinned
+        let moved = Set(source.map { list[$0].id })
+        let moving = source.map { list[$0] }
+        list = list.indices.filter { !source.contains($0) }.map { list[$0] }
+        list.insert(contentsOf: moving, at: offset - source.count { $0 < offset })
+        var keys = list.map { $0.pinOrder! }
+        for i in list.indices where moved.contains(list[i].id) {
+            let next = list.indices.dropFirst(i + 1).first { !moved.contains(list[$0].id) }.map { keys[$0] }
+            keys[i] = PinOrder.between(i > 0 ? keys[i - 1] : nil, next)
+        }
+        if zip(keys, keys.dropFirst()).contains(where: { $0 >= $1 }) { keys = list.indices.map(Double.init) }
+        for (filter, key) in zip(list, keys) where filter.pinOrder != key {
+            var filter = filter
+            filter.pinOrder = key
+            upsertFilter(filter)
+        }
+    }
+
     func deleteFilter(_ id: UUID) {
         let key = library.filters.first { $0.id == id }?.builtInKey
         library.filters.removeAll { $0.id == id }

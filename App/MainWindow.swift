@@ -224,7 +224,7 @@ final class MainWindow: NSObject, NSWindowDelegate {
                 limit *= 4
             }
         case .snippets: return SnippetList.groups(store.library.snippets, query: state.query).flatMap { $0.1.map(\.id) }
-        case .filters: return FilterList.groups(store.library.filters, query: state.query).flatMap { $0.1.map(\.id) }
+        case .filters: return FilterList.orderedIDs(store.library.filters, query: state.query)
         case .activity: return []
         }
     }
@@ -657,7 +657,7 @@ struct ClipMenu: View {
             Button("Copy as Plain Text") { _ = Paster.copy(clip, plain: true) }
             if let ocr = clip.ocrText, !ocr.isEmpty { Button("Copy Text in Image") { Paster.write(text: ocr) } }
             Menu("Copy with Filter") {
-                ForEach(groupedFilters, id: \.0) { group, filters in
+                ForEach([("Pinned", store.library.filters.pinned)].filter { !$0.1.isEmpty } + groupedFilters, id: \.0) { group, filters in
                     Section(group) {
                         ForEach(filters) { filter in
                             Button(filter.name) {
