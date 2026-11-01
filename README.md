@@ -4,6 +4,8 @@
 
 There's no subscription, no license key and no account.
 
+<p align="center"><img src="docs/images/pastelens-history-image.jpg" width="800" alt="The PasteLens History window with a sample invoice picture selected and the text recognized in it shown below"></p>
+
 ## Download
 
 ### ⬇️ [Download PasteLens.dmg](https://github.com/smanke-org/PasteLens/releases/latest/download/PasteLens.dmg)
@@ -36,6 +38,23 @@ Requires macOS 26 or later.
   - `pastelens://` URLs.
 - **Activity (Settings › Activity, and Activity in the History window)**: graphs of how many times you copied and how many times you pasted, widening from 7 days to a year as you use PasteLens. With sync on, each bar is split by Mac in its own color, and every Mac's totals are listed below. Only numbers are kept, and they sync encrypted like everything else.
 - **Import**: brings over Pastebot clippings, pastebins and `.pastebotfilter` files.
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/pastelens-quickpaste.jpg" alt="Quick Paste with views across the top, pastebins on the left, and a copied API key hidden because it looks like a secret"><br><sub><b>Quick Paste.</b> Search and paste from any app; secrets stay hidden.</sub></td>
+<td width="50%"><img src="docs/images/pastelens-qp-filter.jpg" alt="Quick Paste's filter list with Make Professional selected and the rewritten meeting notes shown as the result"><br><sub><b>Filters in Quick Paste.</b> Transform text before you paste it.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/pastelens-filter-editor.jpg" alt="The filter editor building a Slug filter from Plain Text, Change Case and Find and Replace steps, with before and after text"><br><sub><b>Build your own filters.</b> Steps run in order, with a live before and after.</sub></td>
+<td width="50%"><img src="docs/images/pastelens-snippet-editor.jpg" alt="The Meeting Follow-up snippet with the ;sig abbreviation, input, weekday and cursor placeholders, and a preview"><br><sub><b>Snippets.</b> Reusable text with placeholders and abbreviations.</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/images/pastelens-stack.jpg" width="300" alt="The Stack window with three queued clippings, a Collect checkbox and a First In, First Out choice"><br><sub><b>Stack.</b> Queue clippings and paste them one after another.</sub></td>
+<td width="50%"><img src="docs/images/pastelens-history-activity.jpg" alt="Activity in the History window: copies and pastes over 30 days, each bar split between a MacBook Pro and a Mac Studio"><br><sub><b>Activity.</b> How much you copy and paste, split by Mac.</sub></td>
+</tr>
+</table>
 
 ## Sync and encryption
 
