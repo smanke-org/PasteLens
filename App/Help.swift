@@ -194,7 +194,7 @@ enum Help {
         HelpTopic(id: "shortcuts", title: "Keyboard Shortcuts", symbol: "keyboard", blocks: [
             .heading("Anywhere on your Mac"),
             .keys(HotKeyAction.allCases.map { ("{hotkey:\($0.rawValue)}", "\($0.title): \($0.detail)") }),
-            .text("Change these in Settings › Shortcuts. Pastebins, filters and single clippings can have their own shortcuts too, in their edit sheets."),
+            .text("Change these in Settings › Shortcuts. Pastebins, filters and single clippings can have their own shortcuts too, in their edit sheets. ShortcutsLens lists them all under their own names."),
             .heading("Menu bar menu"),
             .keys([
                 ("1 – 9", "With the menu open, copy recent clipping 1 to 9"),
