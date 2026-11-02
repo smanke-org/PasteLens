@@ -181,6 +181,30 @@ final class HotKeyCenter {
             }
             next += 1
         }
+        ShortcutsLensReport.publish()
+    }
+
+    /// For ShortcutsLens: the shortcuts that registered, named as PasteLens names them.
+    var reportedShortcuts: [ShortcutsLensReport.Shortcut] {
+        let registered = Set(targets.values)
+        let library = ClipStore.shared.library
+        return bindings().compactMap { target, key in
+            guard registered.contains(target) else { return nil }
+            let id: String, title: String, category: String?
+            switch target {
+            case .action(let a): (id, title, category) = (a.rawValue, a.title, nil)
+            case .pastebin(let uuid):
+                (id, title, category) = ("pastebin-\(uuid.uuidString)", library.pastebins.first { $0.id == uuid }?.name ?? "Pastebin", "Pastebins")
+            case .filter(let uuid):
+                (id, title, category) = ("filter-\(uuid.uuidString)", library.filters.first { $0.id == uuid }?.name ?? "Filter", "Filters")
+            case .clipping(let uuid):
+                // A sensitive clipping's text never leaves PasteLens, only a name given to it.
+                let clip = ClipStore.shared.clip(uuid)
+                let name = clip.map { $0.sensitive ? ($0.title ?? "Sensitive clipping") : String($0.displayTitle.prefix(40)) }
+                (id, title, category) = ("clipping-\(uuid.uuidString)", name ?? "Clipping", "Clippings")
+            }
+            return .init(id: id, title: title, keyCode: Int(key.keyCode), carbonModifiers: Int(key.modifiers), category: category)
+        }
     }
 
     /// Whether a key press is one of PasteLens's own shortcuts.

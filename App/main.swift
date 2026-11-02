@@ -92,6 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ClipboardMonitor.shared.start()
         HotKeyCenter.shared.perform = { [weak self] target in self?.perform(target) }
         HotKeyCenter.shared.apply()
+        #if !APPSTORE
+        // A sandboxed app can't send a distributed notification's userInfo.
+        ShortcutsLensReport.start { HotKeyCenter.shared.reportedShortcuts }
+        #endif
         SnippetExpander.shared.refresh()
         SyncEngine.shared.start()
         step("sync")
