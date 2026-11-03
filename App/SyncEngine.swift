@@ -749,6 +749,10 @@ enum Keychain {
     /// Test runs pointed at their own data folder keep their key apart from the real one.
     static let account: String = {
         let env = ProcessInfo.processInfo.environment
+        #if DEBUG
+        // An agent CLI test copy never syncs, but if anything asked, it gets a key of its own.
+        if AgentSocket.isTestRun { return "data-key-agenttest" }
+        #endif
         guard env["PASTELENS_DATA_FOLDER"] != nil else { return "data-key" }
         return "data-key-test" + (env["PASTELENS_DEFAULTS_SUITE"].map { "-" + $0 } ?? "")
     }()

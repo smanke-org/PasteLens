@@ -2,6 +2,10 @@ import AppKit
 import PasteLensKit
 import SwiftUI
 
+// `pastelens <command>` (the app binary under a short name): run it against the running app
+// and exit, without starting a second copy. See Agent/AgentCLI.swift.
+if let code = AgentCLI.runIfRequested() { exit(code) }
+
 MainActor.assumeIsolated {
     let app = NSApplication.shared
     let delegate = AppDelegate()
@@ -70,6 +74,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.mainMenu = mainMenu()
         Preferences.shared.applyAppearance()
         #if DEBUG
+        // A test run of the agent CLI (APP_STORE): its own clippings and settings, and the agent
+        // socket. Nothing else starts: no clipboard watching, shortcuts, sync, keychain, bridges,
+        // menu bar item, ToolHUD hub, ShortcutsLens report, timers or updater.
+        if AgentSocket.isTestRun {
+            _ = ClipStore.shared
+            AgentSocket.listen { await AgentRouter.handle($0) }
+            return
+        }
         // A test run shares the installed app's settings unless given its own suite, so the
         // quit test starts nothing else: no capture, shortcuts, sync or bridges.
         if let how = ProcessInfo.processInfo.environment["PASTELENS_DEBUG_QUIT_TEST"] {
@@ -100,6 +112,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         SyncEngine.shared.start()
         step("sync")
         BridgeHandler.start()
+        // `pastelens` (the app binary) and `PasteLens mcp` talk to the app through this.
+        AgentSocket.listen { await AgentRouter.handle($0) }
         ExpansionLensBridge.shared.start()
         step("bridge")
 

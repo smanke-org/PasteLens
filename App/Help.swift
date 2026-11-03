@@ -256,8 +256,15 @@ enum Help {
                 ("pastelens://paste?text=…", "Paste the given text"),
             ]),
             .text("ToolHUD's PasteLens buttons use these links."),
-            .heading("Terminal and AI assistants"),
-            .text("Settings › Advanced installs the pastelens command, for example pastelens get-clippings --query invoice, and gives the configuration for the MCP server, so an AI assistant such as Claude Desktop can search your clippings, run filters and paste."),
+            .heading("Command line and AI agents"),
+            .text("PasteLens is also a command line tool, so scripts and AI agents such as Claude Code or Codex can search and read your clippings, save text as a clipping, pin clippings and move them into pastebins, run filters, expand snippets and pause recording. Commands run in the open app, and its windows show each change at once. Deleting and clearing History need --yes, and clippings that look like secrets are listed by title only."),
+            .keys([
+                ("pastelens help", "List every command and its options"),
+                ("pastelens clips list --search invoice", "Find clippings, as Quick Paste's search does"),
+                ("pastelens filters run \"Title Case\" --text \"…\"", "Run a filter and print the result"),
+                ("pastelens mcp", "Offer the same commands to MCP apps, such as Claude Desktop"),
+            ]),
+            .text("To type pastelens in Terminal, link it once: ln -s /Applications/PasteLens.app/Contents/MacOS/PasteLens ~/.local/bin/pastelens (with ~/.local/bin on your PATH). MCP apps take the full path to that program, followed by mcp. The older commands, such as pastelens get-clippings --query invoice, still work, and Settings › Advanced still installs that tool and gives its MCP configuration."),
         ]),
 
         HelpTopic(id: "troubleshooting", title: "Troubleshooting", symbol: "wrench.and.screwdriver", blocks: [

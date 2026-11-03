@@ -26,7 +26,15 @@ final class ClipStore {
     var clipHotKeys: [UUID: StoredHotKey] { library.clipHotKeys }
 
     private init() {
-        if let override = ProcessInfo.processInfo.environment["PASTELENS_DATA_FOLDER"] {
+        #if DEBUG
+        let agentTestStore = AgentSocket.isTestRun ? ProcessInfo.processInfo.environment["APP_STORE"] : nil
+        #else
+        let agentTestStore: String? = nil
+        #endif
+        if let agentTestStore {
+            // An agent CLI test copy keeps its clippings in the APP_STORE folder.
+            folder = URL(fileURLWithPath: agentTestStore, isDirectory: true)
+        } else if let override = ProcessInfo.processInfo.environment["PASTELENS_DATA_FOLDER"] {
             folder = URL(fileURLWithPath: override)
         } else {
             folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

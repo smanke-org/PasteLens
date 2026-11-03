@@ -70,15 +70,36 @@ Turn on sync in **Settings › Sync** and choose a passphrase. Enter the same pa
 
 Clippings are kept in an SQLite database with a full-text index (`~/Library/Application Support/PasteLens/PasteLens.sqlite`), and each clipping's bytes are kept in its own file beside it. Lists load a page at a time and search uses the index, so PasteLens stays quick with tens of thousands of clippings. Versions before 1.0.6 kept a `library.json`; it's moved into the database automatically and the old file is kept as `library-before-database.json`.
 
-## Command line and MCP
+## Command line and AI agents
 
-In **Settings › Advanced**, copy the install command for the `pastelens` tool, or the MCP configuration for Claude Desktop or another MCP client.
+PasteLens is also a command line tool, so scripts and AI agents (Claude Code, Codex) can search and read your clippings, save text as a clipping, pin clippings and move them into pastebins, copy one to the clipboard, run filters, expand snippets and pause recording. Commands run in the open app, and its windows show each change at once. Link it once to type `pastelens`:
+
+```bash
+ln -s /Applications/PasteLens.app/Contents/MacOS/PasteLens ~/.local/bin/pastelens
+```
+
+```bash
+pastelens help
+pastelens clips list --search invoice --json
+pastelens clips show 3f2a9c1e
+pastelens filters run "Title Case" --text "the quick brown fox"
+pastelens clips move 3f2a9c1e --to Work
+```
+
+Every command takes `--json`. Deleting and clearing History only show what they would do until you add `--yes`, and clippings that look like secrets are listed by title only, never their text. For MCP apps such as Claude Desktop, the same commands are served by `/Applications/PasteLens.app/Contents/MacOS/PasteLens mcp`:
+
+```bash
+claude mcp add --scope user pastelens -- /Applications/PasteLens.app/Contents/MacOS/PasteLens mcp
+```
+
+### The older pastelens tool
+
+**Settings › Advanced** still copies the install command for the earlier `pastelens` tool (in `Contents/Helpers`) and the MCP configuration for its server. Its commands also work through the link above:
 
 ```bash
 pastelens get-clippings --query invoice --limit 5
 pastelens apply-filter --filter-id "Title Case" --text "the quick brown fox"
 pastelens write-to-pasteboard --text "Hello" && pastelens paste-clipboard
-pastelens help
 ```
 
 ## Updates
