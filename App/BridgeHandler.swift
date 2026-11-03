@@ -345,7 +345,7 @@ enum BridgeHandler {
             // Submenus are listed indented under their item, with each entry's action.
             func lines(_ menu: NSMenu, _ indent: String) -> [String] {
                 menu.items.flatMap { item -> [String] in
-                    let title = item.isSeparatorItem ? "—" : item.title
+                    let title = item.isSeparatorItem ? "—" : item.plainTitle
                     let action = item.action.map { " [\(NSStringFromSelector($0))\((item.target as AnyObject?)?.responds(to: $0) == true ? "" : " UNHANDLED")]" } ?? ""
                     return [indent + title + action] + (item.submenu.map { lines($0, indent + "    ") } ?? [])
                 }
