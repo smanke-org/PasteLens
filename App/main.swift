@@ -106,7 +106,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         HotKeyCenter.shared.apply()
         #if !APPSTORE
         // A sandboxed app can't send a distributed notification's userInfo.
-        ShortcutsLensReport.start { HotKeyCenter.shared.reportedShortcuts }
+        ShortcutsLensReport.start({ HotKeyCenter.shared.reportedShortcuts }, change: { id, keyCode, modifiers in
+            HotKeyCenter.shared.change(id: id, keyCode: keyCode, carbonModifiers: modifiers)
+        })
         #endif
         SnippetExpander.shared.refresh()
         SyncEngine.shared.start()

@@ -207,6 +207,73 @@ final class HotKeyCenter {
         }
     }
 
+    /// ShortcutsLens's Change Shortcut: saves the keys where PasteLens's own recorders do
+    /// (Settings › Shortcuts, the pastebin and filter editors, a clipping's shortcut sheet), so
+    /// they show there and sync carries them, and registers again. Nil when done, or why not.
+    func change(id: String, keyCode: Int, carbonModifiers: Int) -> String? {
+        guard let target = target(for: id) else { return "PasteLens has no shortcut called \(id)." }
+        let mods = UInt32(carbonModifiers) & UInt32(controlKey | optionKey | shiftKey | cmdKey)
+        guard mods & UInt32(controlKey | optionKey | cmdKey) != 0, (0...127).contains(keyCode),
+              !RecordingCatcher.skipped.contains(keyCode),
+              let key = HotKey(keyCode: UInt32(keyCode), carbonModifiers: mods) else {
+            return "PasteLens shortcuts need ⌘, ⌥ or ⌃ and a key."
+        }
+        if let other = bindings().first(where: { $0.0 != target && $0.1.keyCode == key.keyCode && $0.1.modifiers == key.modifiers }) {
+            return "PasteLens already uses \(key.display) for \(name(of: other.0))."
+        }
+        let previous = bindings().first { $0.0 == target }?.1
+        save(key, for: target)
+        guard !targets.values.contains(target) else { return nil }
+        // Taken by another app: keep the old keys rather than leave the shortcut dead.
+        save(previous, for: target)
+        return "\(key.display) is taken by another app, so PasteLens kept \(previous?.display ?? "no shortcut")."
+    }
+
+    private func target(for id: String) -> Target? {
+        if let action = HotKeyAction(rawValue: id) { return .action(action) }
+        let library = ClipStore.shared.library
+        for (prefix, make) in [("pastebin-", Target.pastebin), ("filter-", Target.filter), ("clipping-", Target.clipping)] where id.hasPrefix(prefix) {
+            guard let uuid = UUID(uuidString: String(id.dropFirst(prefix.count))) else { return nil }
+            let exists = switch make(uuid) {
+            case .pastebin: library.pastebins.contains { $0.id == uuid }
+            case .filter: library.filters.contains { $0.id == uuid }
+            case .clipping: ClipStore.shared.clip(uuid) != nil
+            case .action: false
+            }
+            return exists ? make(uuid) : nil
+        }
+        return nil
+    }
+
+    /// Saves through the same calls the recorders use; each registers the shortcuts again.
+    private func save(_ key: HotKey?, for target: Target) {
+        let store = ClipStore.shared
+        switch target {
+        case .action(let action):
+            Preferences.shared.setHotKey(key, for: action)
+            apply()
+        case .pastebin(let id):
+            guard var bin = store.library.pastebins.first(where: { $0.id == id }) else { return }
+            bin.hotKey = key?.stored
+            store.upsertPastebin(bin)
+        case .filter(let id):
+            guard var filter = store.library.filters.first(where: { $0.id == id }) else { return }
+            filter.hotKey = key?.stored
+            store.upsertFilter(filter)
+        case .clipping(let id):
+            store.setHotKey(key?.stored, forClip: id)
+        }
+    }
+
+    private func name(of target: Target) -> String {
+        switch target {
+        case .action(let a): return a.title
+        case .pastebin(let id): return ClipStore.shared.library.pastebins.first { $0.id == id }?.name ?? "a pastebin"
+        case .filter(let id): return ClipStore.shared.library.filters.first { $0.id == id }?.name ?? "a filter"
+        case .clipping: return "a clipping"
+        }
+    }
+
     /// Whether a key press is one of PasteLens's own shortcuts.
     func isOwnHotKey(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Bool {
         bindings().contains { $0.1.matches(keyCode: keyCode, flags: flags) }
