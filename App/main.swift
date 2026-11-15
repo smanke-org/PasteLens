@@ -95,6 +95,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         #endif
+        // The shortcut editor's self-test; starts nothing else either.
+        if let folder = ProcessInfo.processInfo.environment["PASTELENS_DEBUG_SHORTCUT_EDITOR"] {
+            DebugShortcutEditor.run(folder: folder)
+            return
+        }
         #endif
         let newInstall = !AppDefaults.store.bool(forKey: "welcomed")
 

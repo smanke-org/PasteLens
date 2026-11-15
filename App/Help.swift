@@ -195,6 +195,7 @@ enum Help {
             .heading("Anywhere on your Mac"),
             .keys(HotKeyAction.allCases.map { ("{hotkey:\($0.rawValue)}", "\($0.title): \($0.detail)") }),
             .text("Change these in Settings › Shortcuts. Pastebins, filters and single clippings can have their own shortcuts too, in their edit sheets. ShortcutsLens lists them all under their own names."),
+            .text("Click a shortcut to open its editor: turn on the modifier keys (⌃ ⌥ ⇧ ⌘), type a letter, number or symbol, or pick Space, an arrow or an F-key from the keyboard menu — or just press the shortcut. Shortcuts need ⌘, ⌥ or ⌃, except F-keys. If another PasteLens shortcut has the keys, they move to this one and the other is cleared. Clear removes a shortcut."),
             .heading("Menu bar menu"),
             .keys([
                 ("1 – 9", "With the menu open, copy recent clipping 1 to 9"),

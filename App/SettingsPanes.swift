@@ -278,29 +278,22 @@ struct QuickPasteSettings: View {
 
 struct ShortcutSettings: View {
     @State private var prefs = Preferences.shared
-    @State private var warning: String?
 
     var body: some View {
         Form {
             Section {
                 ForEach(HotKeyAction.allCases) { action in
                     LabeledContent {
-                        ShortcutRecorder(hotKey: Binding(get: { prefs.hotKey(action) }, set: { key in
-                            if let key, let owner = HotKeyCenter.shared.owner(of: key), owner != action.title {
-                                warning = "\(key.display) was already used by \(owner)."
-                            } else { warning = nil }
-                            prefs.setHotKey(key, for: action)
-                        }))
+                        ShortcutRecorder(hotKey: Binding(get: { prefs.hotKey(action) }, set: { prefs.setHotKey($0, for: action) }),
+                                         target: .action(action))
                     } label: {
                         Text(action.title)
                         Text(action.detail).font(.caption)
                     }
                 }
             } footer: {
-                VStack(alignment: .leading) {
-                    if let warning { Text(warning).foregroundStyle(.orange) }
-                    Text("Click a shortcut, then press the new keys. Delete clears it. Pastebins, filters and single clippings can have their own shortcuts too — set them where you edit each one.")
-                }.font(.caption)
+                Text("Click a shortcut to set it: pick the modifier keys and type a key, or press the shortcut. Keys another PasteLens shortcut has are moved here. Pastebins, filters and single clippings can have their own shortcuts too — set them where you edit each one.")
+                    .font(.caption)
             }
             Section {
                 Button("Restore Default Shortcuts") {

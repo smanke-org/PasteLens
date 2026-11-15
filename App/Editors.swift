@@ -144,7 +144,7 @@ struct FilterEditor: View {
                     Toggle("Pinned", isOn: Binding(get: { store.library.filters.first { $0.id == filter.id }?.isPinned ?? false },
                                                    set: { store.setFilterPinned(filter.id, $0) }))
                         .help("Show this filter at the top of the Filters list, as well as in its group. Drag pinned filters to reorder them.")
-                    LabeledContent("Shortcut") { ShortcutRecorder(hotKey: $key) }
+                    LabeledContent("Shortcut") { ShortcutRecorder(hotKey: $key, target: .filter(filter.id)) }
                 }
                 Section {
                     ForEach($filter.steps) { $step in

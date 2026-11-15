@@ -747,11 +747,12 @@ struct ClipShortcutSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Shortcut for “\(clip.displayTitle.prefix(40))”").font(.headline)
             Text("Pressing it anywhere pastes this clipping.").foregroundStyle(.secondary)
-            ShortcutRecorder(hotKey: $key)
+            ShortcutRecorder(hotKey: $key, target: .clipping(clip.id), movesNow: false)
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Save") {
+                    HotKeyCenter.shared.clearOthers(using: key, except: .clipping(clip.id))
                     ClipStore.shared.setHotKey(key?.stored, forClip: clip.id)
                     ClipStore.shared.update(clip.id) { $0.pinned = true }
                     dismiss()
@@ -785,7 +786,7 @@ struct PastebinEditor: View {
                 }
             }
             Toggle("Show in Quick Paste", isOn: $bin.showInQuickPaste)
-            LabeledContent("Shortcut") { ShortcutRecorder(hotKey: $key) }
+            LabeledContent("Shortcut") { ShortcutRecorder(hotKey: $key, target: .pastebin(bin.id), movesNow: false) }
             Text("The shortcut opens Quick Paste on this pastebin.").font(.caption).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
@@ -794,6 +795,7 @@ struct PastebinEditor: View {
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Save") {
+                    HotKeyCenter.shared.clearOthers(using: key, except: .pastebin(bin.id))
                     bin.hotKey = key?.stored
                     ClipStore.shared.upsertPastebin(bin)
                     dismiss()
