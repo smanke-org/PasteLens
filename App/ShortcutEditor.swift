@@ -53,6 +53,8 @@ struct ShortcutRecorder: NSViewRepresentable {
 
         @objc private func open() {
             guard popover == nil, window != nil else { popover?.close(); return }
+            // Settings may not have redrawn yet after keys moved off this shortcut.
+            if let target_ { hotKey = HotKeyCenter.shared.hotKey(for: target_) }
             // The current shortcuts must not fire while new keys are pressed.
             HotKeyCenter.shared.unregisterAll()
             let model = ShortcutEditorModel(hotKey: hotKey, target: target_)

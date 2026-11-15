@@ -248,6 +248,11 @@ final class HotKeyCenter {
         return nil
     }
 
+    /// The keys a target has saved right now, or nil.
+    func hotKey(for target: Target) -> HotKey? {
+        bindings().first { $0.0 == target }?.1
+    }
+
     /// Saves through the same calls the recorders use; each registers the shortcuts again.
     func save(_ key: HotKey?, for target: Target) {
         let store = ClipStore.shared
