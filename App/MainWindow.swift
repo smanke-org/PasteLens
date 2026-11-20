@@ -16,6 +16,9 @@ extension View {
 final class MainWindow: NSObject, NSWindowDelegate {
     static let shared = MainWindow()
     private var window: NSWindow?
+    #if DEBUG
+    var debugWindow: NSWindow? { window }
+    #endif
     let state = MainState()
     /// The app that was in front when the window opened: pasting goes back to it.
     private var previousApp: NSRunningApplication?

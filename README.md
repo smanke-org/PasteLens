@@ -16,6 +16,12 @@ There's no subscription, no license key and no account.
 
 Requires macOS 26 or later.
 
+## See it in action
+
+[![Watch the PasteLens demo video](docs/images/pastelens-demo-poster.jpg)](https://stevemanke.com/pastelens/)
+
+[Watch the narrated demo](https://stevemanke.com/pastelens/) (under three minutes, with captions): Quick Paste into Word, text in pictures, pastebins, plain paste and typing out in Safari, filters with Apple Intelligence, the stack, snippets, secrets, sync, Activity and the command line. Every clipping in it is a made-up sample.
+
 ## What it does
 
 - **History**: everything you copy, including text, rich text, links, colors, images and files, ready to paste again. You choose how many clippings to keep by typing a number (0 keeps everything) and, optionally, how many days.

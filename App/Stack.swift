@@ -73,6 +73,10 @@ final class StackWindow {
 
     var isVisible: Bool { panel?.isVisible == true }
 
+    #if DEBUG
+    var debugPanel: NSPanel? { panel }
+    #endif
+
     func showIfNeeded() { if !isVisible { show() } }
 
     func toggle() { isVisible ? panel?.orderOut(nil) : show() }

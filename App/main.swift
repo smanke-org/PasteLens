@@ -95,6 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         #endif
+        // The narrated demo video (DemoStage.swift): its own clippings and settings, clipboard
+        // watching on, and nothing else (no shortcuts, sync, bridges or menu bar item).
+        if let trace = ProcessInfo.processInfo.environment["PASTELENS_DEBUG_DEMO"] {
+            DemoStage.run(trace: trace)
+            return
+        }
         // The shortcut editor's self-test; starts nothing else either.
         if let folder = ProcessInfo.processInfo.environment["PASTELENS_DEBUG_SHORTCUT_EDITOR"] {
             DebugShortcutEditor.run(folder: folder)
