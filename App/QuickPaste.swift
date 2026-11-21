@@ -673,7 +673,12 @@ struct QuickPasteView: View {
                 hint("↩", "Paste"); hint("⇧↩", "Plain"); hint("⌘↩", "Filter"); hint("⌥↩", "Type")
                 hint("⇥", "Pastebin"); hint("⌥⇥", "View"); hint("⌘-click", "Pick several"); hint("⌃1–9", "Move")
             }
-            Spacer()
+            Spacer(minLength: 8)
+            if SyncEngine.shared.enabled, let bytes = SyncEngine.shared.cloudBytes {
+                Label("\(bytes.formatted(.byteCount(style: .file))) in iCloud", systemImage: "icloud")
+                    .lineLimit(1).fixedSize()
+                    .help("About how much of your iCloud storage PasteLens uses to sync between your Macs.")
+            }
         }
         .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 6)
     }
