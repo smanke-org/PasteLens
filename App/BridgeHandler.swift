@@ -178,7 +178,8 @@ enum BridgeHandler {
         case "debug-sync-status":
             let sync = SyncEngine.shared
             return ["status": sync.status.summary, "devices": sync.devices.map(\.name), "pending": sync.pendingContent,
-                    "clippings": store.db.totalCount, "hasContent": store.db.ids(.all).filter { store.hasContent($0) }.count]
+                    "clippings": store.db.totalCount, "hasContent": store.db.ids(.all).filter { store.hasContent($0) }.count,
+                    "cloudBytes": sync.cloudBytes ?? -1]
         case "debug-activity":
             // Adds counts on a past day, and reports what every Mac has shared.
             if let kind = args["kind"].flatMap(ActivityKind.init(rawValue:)) {

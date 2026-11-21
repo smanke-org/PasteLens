@@ -61,6 +61,9 @@ final class SyncEngine {
     /// Whether a keyring already exists in iCloud (so setup means joining, not starting).
     private(set) var keyringExists = false
     private(set) var pendingContent = 0
+    /// About how many bytes PasteLens keeps in iCloud (sealed records plus their assets), for
+    /// the History window footer. nil until this Mac has measured the zone once.
+    private(set) var cloudBytes: Int?
 
     var enabled: Bool {
         get { AppDefaults.store.bool(forKey: "sync.enabled") }
@@ -77,6 +80,10 @@ final class SyncEngine {
     @ObservationIgnored private var missingContent: Set<UUID> = []
     @ObservationIgnored private var started = false
     @ObservationIgnored private var activityPublishScheduled = false
+    /// Bytes per record name, kept up to date as records go up, come down or are deleted.
+    @ObservationIgnored private var recordSizes: [String: Int] = [:]
+    @ObservationIgnored private var sizesSaveScheduled = false
+    @ObservationIgnored private var measuring = false
 
     static let containerID = "iCloud.com.smanke.PasteLens"
     @ObservationIgnored private lazy var container = CKContainer(identifier: Self.containerID)
@@ -97,6 +104,7 @@ final class SyncEngine {
 
     func start() {
         loadOutbox()
+        loadRecordSizes()
         guard enabled else { status = .off; return }
         loadCachedDevices()
         if !started {
@@ -228,6 +236,10 @@ final class SyncEngine {
         AppDefaults.store.removeObject(forKey: "ck.subscribed")
         try? store.db.set(nil, forKey: "ck.token")
         clearOutbox()
+        recordSizes = [:]
+        cloudBytes = nil
+        try? store.db.set(nil, forKey: "ck.sizes")
+        try? store.db.set(nil, forKey: "ck.sizes.measured")
     }
 
     // MARK: Local changes
@@ -323,6 +335,118 @@ final class SyncEngine {
         record.encodeSystemFields(with: coder)
         coder.finishEncoding()
         try? store.db.set(coder.encodedData, forKey: "ck.sys.\(record.recordID.recordName)")
+        noteSize(of: record)
+    }
+
+    // MARK: iCloud usage
+
+    /// CloudKit has no call for how much space an app's data takes, so PasteLens counts it:
+    /// every record it saves or fetches is sized (its sealed fields plus its asset file), and
+    /// deletions take their record out. The first time, `measureCloudUsageIfNeeded` sizes what
+    /// is already there.
+    private func noteSize(of record: CKRecord) {
+        var bytes = 0
+        var assetUnknown = false
+        for key in record.allKeys() {
+            switch record[key] {
+            case let data as Data: bytes += data.count
+            case let string as String: bytes += string.utf8.count
+            case let asset as CKAsset:
+                if let url = asset.fileURL, let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                    bytes += size
+                } else {
+                    assetUnknown = true
+                }
+            default: break
+            }
+        }
+        let name = record.recordID.recordName
+        // A record that came back without its asset file keeps the size measured before.
+        if assetUnknown, recordSizes[name] != nil { return }
+        setSize(bytes, for: name)
+    }
+
+    private func setSize(_ bytes: Int?, for name: String) {
+        guard recordSizes[name] != bytes else { return }
+        recordSizes[name] = bytes
+        sizesChanged()
+    }
+
+    private func sizesChanged() {
+        if store.db.data(forKey: "ck.sizes.measured") != nil || cloudBytes != nil {
+            cloudBytes = recordSizes.values.reduce(0, +)
+        }
+        guard !sizesSaveScheduled else { return }
+        sizesSaveScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            MainActor.assumeIsolated { SyncEngine.shared.saveRecordSizes() }
+        }
+    }
+
+    private func loadRecordSizes() {
+        if let data = store.db.data(forKey: "ck.sizes"), let sizes = try? JSONDecoder().decode([String: Int].self, from: data) {
+            recordSizes = sizes
+        }
+        if store.db.data(forKey: "ck.sizes.measured") != nil { cloudBytes = recordSizes.values.reduce(0, +) }
+    }
+
+    private func saveRecordSizes() {
+        sizesSaveScheduled = false
+        try? store.db.set(try? JSONEncoder().encode(recordSizes), forKey: "ck.sizes")
+    }
+
+    /// Sizes every record in the zone once, without downloading any assets: Items, Devices and
+    /// the Keyring come down without them, and each Content asset is sized by sealing this Mac's
+    /// copy of the clipping the same way the upload did (sealing doesn't change the size from
+    /// one run to the next, only the bytes).
+    private func measureCloudUsageIfNeeded() async {
+        guard enabled, let key, !measuring, store.db.data(forKey: "ck.sizes.measured") == nil else { return }
+        measuring = true
+        defer { measuring = false }
+        var sizes: [String: Int] = [:]
+        var contentIDs: [String: UUID] = [:]
+        do {
+            var token: CKServerChangeToken?
+            var more = true
+            while more {
+                let changes = try await database.recordZoneChanges(inZoneWith: zoneID, since: token, desiredKeys: ["data", "hash"])
+                for (id, result) in changes.modificationResultsByID {
+                    guard case .success(let modification) = result else { continue }
+                    let record = modification.record
+                    var bytes = 0
+                    for key in record.allKeys() {
+                        if let data = record[key] as? Data { bytes += data.count }
+                        if let string = record[key] as? String { bytes += string.utf8.count }
+                    }
+                    sizes[id.recordName] = bytes
+                    if record.recordType == "Content", let uuid = UUID(uuidString: String(id.recordName.dropFirst(8))) {
+                        contentIDs[id.recordName] = uuid
+                    }
+                }
+                for deletion in changes.deletions { sizes[deletion.recordID.recordName] = nil }
+                token = changes.changeToken
+                more = changes.moreComing
+            }
+        } catch {
+            NSLog("PasteLens: couldn't measure iCloud usage: \(error.localizedDescription)")
+            return
+        }
+        for (name, id) in contentIDs {
+            // Records already sized from a real upload or download are exact; keep those.
+            if let known = recordSizes[name], known > (sizes[name] ?? 0) { sizes[name] = known; continue }
+            guard let content = store.content(for: id) else { continue }
+            let sealed = await Task.detached(priority: .utility) { () -> Int in
+                let encoder = PropertyListEncoder()
+                encoder.outputFormat = .binary
+                guard let plain = try? encoder.encode(content), let sealed = try? SyncCrypto.seal(plain, using: key) else { return 0 }
+                return sealed.count
+            }.value
+            sizes[name, default: 0] += sealed
+        }
+        guard enabled else { return }
+        recordSizes = sizes
+        try? store.db.set(Data("1".utf8), forKey: "ck.sizes.measured")
+        sizesChanged()
     }
 
     // MARK: Pushing
@@ -401,8 +525,11 @@ final class SyncEngine {
     private func save(_ records: [CKRecord], deleting: [CKRecord.ID]) async -> Bool {
         guard !records.isEmpty || !deleting.isEmpty else { return true }
         do {
-            let (saveResults, _) = try await database.modifyRecords(saving: records, deleting: deleting,
+            let (saveResults, deleteResults) = try await database.modifyRecords(saving: records, deleting: deleting,
                                                                     savePolicy: .ifServerRecordUnchanged, atomically: false)
+            for (id, result) in deleteResults {
+                if case .success = result { setSize(nil, for: id.recordName) }
+            }
             var retry: [CKRecord] = []
             var failure: String?
             for (id, result) in saveResults {
@@ -488,6 +615,7 @@ final class SyncEngine {
             var more = true
             while more {
                 let changes = try await database.recordZoneChanges(inZoneWith: zoneID, since: token)
+                for deletion in changes.deletions { setSize(nil, for: deletion.recordID.recordName) }
                 for deletion in changes.deletions where deletion.recordID.recordName.hasPrefix("Device_") {
                     let id = String(deletion.recordID.recordName.dropFirst(7))
                     if devices.contains(where: { $0.id == id }) {
@@ -533,6 +661,7 @@ final class SyncEngine {
             fetchAgain = false
             await fetchChanges()
         }
+        await measureCloudUsageIfNeeded()
     }
 
     /// Applies one fetched record. Returns true if something here changed.

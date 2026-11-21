@@ -466,6 +466,11 @@ struct Sidebar: View {
                 }
                 if sync.enabled {
                     Label(sync.status.summary, systemImage: "icloud").lineLimit(2)
+                    if let bytes = sync.cloudBytes {
+                        Label("\(bytes.formatted(.byteCount(style: .file))) used in iCloud", systemImage: "internaldrive")
+                            .lineLimit(1)
+                            .help("About how much of your iCloud storage PasteLens uses to sync between your Macs. Everything is encrypted before it leaves this Mac.")
+                    }
                 }
             }
             .font(.caption).foregroundStyle(.secondary).padding(10).frame(maxWidth: .infinity, alignment: .leading)

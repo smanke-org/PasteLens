@@ -240,6 +240,7 @@ enum Help {
             .text("Everything is encrypted on this Mac before it leaves. The passphrase can't be recovered, so keep it somewhere safe. Secrets never sync, and you can keep clippings on each Mac with \"Sync clippings\" off."),
             .heading("If sync stops"),
             .text("When the menu bar menu shows \"Enter Sync Passphrase…\", this Mac has lost its key, and nothing syncs until you enter the passphrase again. The menu's iCloud line shows the current status; choose it to open Settings › Sync."),
+            .text("The bottom of the History window's sidebar shows the sync status and about how much iCloud storage PasteLens uses for your synced clippings and settings. The first time, PasteLens measures what is already in iCloud; after that the number follows every change from any of your Macs."),
         ]),
 
         HelpTopic(id: "activity", title: "Activity", symbol: "chart.bar.xaxis", blocks: [
