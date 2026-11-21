@@ -95,6 +95,18 @@ public final class ClipDatabase: @unchecked Sendable {
                 try exec("PRAGMA user_version = 4")
             }
         }
+        if version < 5 {
+            try transaction {
+                // The search text no longer includes the app a clipping came from.
+                try exec("DELETE FROM clip_text")
+                let all = try rows("SELECT rowid, meta FROM clips") { (sqlite3_column_int64($0, 0), Self.decode($0, 1)) }
+                for (rowid, clip) in all {
+                    guard let clip else { continue }
+                    try run("INSERT INTO clip_text (rowid, body) VALUES (?, ?)", [Int(rowid), Self.searchBody(clip)])
+                }
+                try exec("PRAGMA user_version = 5")
+            }
+        }
     }
 
     // MARK: Tombstones
@@ -210,50 +222,81 @@ public final class ClipDatabase: @unchecked Sendable {
                           args + [limit, offset]) { Self.decode($0, 0) })?.compactMap { $0 } ?? []
     }
 
+    /// What a search found: one page of matches, best first, and how many there are in all.
+    public struct SearchResult: Sendable {
+        public var clips: [Clipping]
+        /// Every match, not just this page.
+        public var total: Int
+        /// True when the matches contain every word as typed; false when none did and these
+        /// are close matches that forgive typos.
+        public var exact: Bool
+        /// True when there were more matches than were looked at, so `total` is a floor.
+        public var capped: Bool
+
+        public init(clips: [Clipping], total: Int, exact: Bool, capped: Bool) {
+            self.clips = clips; self.total = total; self.exact = exact; self.capped = capped
+        }
+    }
+
     /// Clippings matching a search, best first.
-    ///
-    /// The full-text index finds candidates, by substring when every word is found, and
-    /// otherwise by how many three-letter pieces of the words they share, which tolerates
-    /// typos. The candidates are then ranked with `FuzzySearch`, the same scoring as before.
     public func search(_ query: String, in filter: Filter, limit: Int) -> [Clipping] {
-        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-        guard !words.isEmpty else { return page(filter, limit: limit) }
+        find(query, in: filter, limit: limit).clips
+    }
+
+    /// Clippings matching a search, best first, with how many match in all.
+    ///
+    /// A clipping matches when its text, title, note or app contains every word typed. Only
+    /// when nothing does are close matches shown instead, which tolerate typos: candidates that
+    /// share three-letter pieces of the words, kept when `FuzzySearch` finds each word's
+    /// letters in order inside one word of the text.
+    public func find(_ query: String, in filter: Filter, limit: Int) -> SearchResult {
+        let words = FuzzySearch.words(query)
+        guard !words.isEmpty else {
+            return SearchResult(clips: page(filter, limit: limit), total: count(filter), exact: true, capped: false)
+        }
         let (clause, args) = Self.whereClause(filter)
         let indexable = words.filter { $0.count >= 3 }
-        var candidates: [Clipping] = []
+        let cap = max(limit, 2_000)
+        let candidates: [Clipping]
+        var matchCount: Int?
         if indexable.isEmpty {
-            // Too short to index: scan recent clippings only.
-            candidates = page(filter, limit: 5_000)
+            // Too short to index: look through recent clippings only.
+            candidates = page(filter, limit: max(cap, 5_000))
         } else {
+            // The trigram index matches substrings without regard to case, so with no short
+            // words in the query every candidate is a match and the index can count them.
             let exact = indexable.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }.joined(separator: " AND ")
             candidates = (try? rows("""
                 SELECT c.meta FROM clip_text t JOIN clips c ON c.rowid = t.rowid
-                WHERE clip_text MATCH ? AND \(clause) ORDER BY c.copied_at DESC LIMIT 600
-                """, [exact] + args) { Self.decode($0, 0) })?.compactMap { $0 } ?? []
-            if candidates.count < limit {
-                let grams = Set(indexable.flatMap(Self.trigrams))
-                if !grams.isEmpty {
-                    let loose = grams.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }.joined(separator: " OR ")
-                    let more = (try? rows("""
-                        SELECT c.meta FROM clip_text t JOIN clips c ON c.rowid = t.rowid
-                        WHERE clip_text MATCH ? AND \(clause) ORDER BY bm25(clip_text) LIMIT 400
-                        """, [loose] + args) { Self.decode($0, 0) })?.compactMap { $0 } ?? []
-                    let seen = Set(candidates.map(\.id))
-                    candidates += more.filter { !seen.contains($0.id) }
-                }
+                WHERE clip_text MATCH ? AND \(clause) ORDER BY c.copied_at DESC LIMIT ?
+                """, [exact] + args + [cap + 1]) { Self.decode($0, 0) })?.compactMap { $0 } ?? []
+            if candidates.count > cap, indexable.count == words.count {
+                matchCount = (try? scalarInt("""
+                    SELECT COUNT(*) FROM clip_text t JOIN clips c ON c.rowid = t.rowid
+                    WHERE clip_text MATCH ? AND \(clause)
+                    """, [exact] + args)) ?? nil
             }
         }
-        return candidates.compactMap { clip -> (Clipping, Double)? in
-            let text = clip.sensitive ? (clip.title ?? "") : clip.searchableText
-            guard let score = FuzzySearch.score(query, in: text) else { return nil }
-            return (clip, score)
+        let exactHits = FuzzySearch.rank(query, candidates.prefix(cap), text: Self.searchBody, exactOnly: true)
+        if !exactHits.matches.isEmpty || indexable.isEmpty {
+            let capped = candidates.count > cap && matchCount == nil
+            return SearchResult(clips: Array(exactHits.matches.prefix(limit)), total: matchCount ?? exactHits.matches.count,
+                                exact: true, capped: capped)
         }
-        .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.copiedAt > $1.0.copiedAt }
-        .prefix(limit).map(\.0)
+        // Nothing contains the words as typed: offer close matches.
+        let grams = Set(indexable.flatMap(Self.trigrams))
+        let loose = grams.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }.joined(separator: " OR ")
+        let fuzzyCandidates = (try? rows("""
+            SELECT c.meta FROM clip_text t JOIN clips c ON c.rowid = t.rowid
+            WHERE clip_text MATCH ? AND \(clause) ORDER BY bm25(clip_text) LIMIT 400
+            """, [loose] + args) { Self.decode($0, 0) })?.compactMap { $0 } ?? []
+        let close = FuzzySearch.rank(query, fuzzyCandidates.sorted { $0.copiedAt > $1.copiedAt }, text: Self.searchBody)
+        return SearchResult(clips: Array(close.matches.prefix(limit)), total: close.matches.count, exact: false,
+                            capped: fuzzyCandidates.count >= 400)
     }
 
     /// What a clipping is found by. Secrets only by their label, never by their text.
-    static func searchBody(_ clip: Clipping) -> String {
+    public static func searchBody(_ clip: Clipping) -> String {
         clip.sensitive ? (clip.title ?? "") : clip.searchableText
     }
 

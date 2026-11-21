@@ -39,9 +39,27 @@ public struct RetentionPolicy: Equatable, Sendable {
 
 /// Search that tolerates typos and skipped letters: every word typed must appear, either
 /// as a substring or as an in-order subsequence of a word in the text.
+///
+/// Lists use `rank`, which shows only items that contain every word as typed, and falls back
+/// to the typo-tolerant matches only when nothing does, so a search never mixes in results
+/// that don't contain what was typed.
 public enum FuzzySearch {
+    public static func words(_ query: String) -> [String] {
+        query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
+    /// A score when the text contains every word of the query as typed, ignoring case.
+    public static func exactScore(_ query: String, in text: String) -> Double? {
+        score(query, in: text, fuzzy: false)
+    }
+
+    /// A score when every word is in the text, as typed or with typos.
     public static func score(_ query: String, in text: String) -> Double? {
-        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        score(query, in: text, fuzzy: true)
+    }
+
+    static func score(_ query: String, in text: String, fuzzy: Bool) -> Double? {
+        let words = words(query)
         guard !words.isEmpty else { return 1 }
         let haystack = text.lowercased()
         var total = 0.0
@@ -50,7 +68,7 @@ public enum FuzzySearch {
                 // Earlier matches and word starts rank higher.
                 let atStart = range.lowerBound == haystack.startIndex || !haystack[haystack.index(before: range.lowerBound)].isLetter
                 total += atStart ? 3 : 2
-            } else if word.count >= 3, subsequenceMatch(word, in: haystack) {
+            } else if fuzzy, word.count >= 3, subsequenceMatch(word, in: haystack) {
                 total += 1
             } else {
                 return nil
@@ -59,7 +77,24 @@ public enum FuzzySearch {
         return total
     }
 
-    /// Whether `needle`'s letters appear in order within a single word-ish window of the text.
+    /// Items matching a search, best first, then newest first by their order in `items`.
+    /// Exact matches when there are any (or when `exactOnly`); otherwise close matches.
+    public static func rank<S: Sequence>(_ query: String, _ items: S, text: (S.Element) -> String,
+                                         exactOnly: Bool = false) -> (matches: [S.Element], exact: Bool) {
+        let list = Array(items)
+        func ranked(_ score: (String) -> Double?) -> [S.Element] {
+            list.enumerated().compactMap { i, item in score(text(item)).map { (i, $0) } }
+                .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0 < $1.0 }
+                .map { list[$0.0] }
+        }
+        let exact = ranked { exactScore(query, in: $0) }
+        if !exact.isEmpty || exactOnly { return (exact, true) }
+        return (ranked { score(query, in: $0) }, false)
+    }
+
+    /// Whether `needle`'s letters appear in order within one word of the text, spanning at
+    /// most three times its length. A match never runs across spaces or lines, so "clip"
+    /// doesn't match "click up".
     static func subsequenceMatch(_ needle: String, in haystack: String) -> Bool {
         let maxSpan = needle.count * 3
         let chars = Array(haystack)
@@ -68,7 +103,7 @@ public enum FuzzySearch {
         while start < chars.count {
             guard let first = chars[start...].firstIndex(of: target[0]) else { return false }
             var i = first, j = 0
-            while i < chars.count, j < target.count, i - first < maxSpan {
+            while i < chars.count, j < target.count, i - first < maxSpan, !chars[i].isWhitespace {
                 if chars[i] == target[j] { j += 1 }
                 i += 1
             }

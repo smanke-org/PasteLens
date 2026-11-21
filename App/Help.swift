@@ -79,7 +79,7 @@ enum Help {
         ]),
 
         HelpTopic(id: "quick-paste", title: "Quick Paste", symbol: "magnifyingglass", blocks: [
-            .text("Press {hotkey:quickPaste} anywhere. The panel opens at the pointer (or the center of the screen; see Settings › Quick Paste). Start typing to search; matching is fuzzy, so \"inv23\" finds \"Invoice 2023\". Text in images is searchable when text recognition is on."),
+            .text("Press {hotkey:quickPaste} anywhere. The panel opens at the pointer (or the center of the screen; see Settings › Quick Paste). Start typing to search. You see the clippings whose text, title or note contains every word you type, and how many there are. Only when nothing does, PasteLens shows close matches that allow for typos (so \"invoce\" still finds \"Invoice\") and says so. Text in images is searchable when text recognition is on."),
             .heading("Choose and paste"),
             .keys([
                 ("↑ ↓", "Move through the list"),

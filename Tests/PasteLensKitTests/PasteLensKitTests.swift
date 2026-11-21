@@ -174,6 +174,14 @@ import Testing
         #expect(FuzzySearch.score("hllo wrld", in: "hello world") != nil)
         #expect(FuzzySearch.score("xyz", in: "hello world") == nil)
         #expect(FuzzySearch.score("wor", in: "hello world")! > FuzzySearch.score("wrd", in: "hello world")!)
+        // Typo matches stay inside one word.
+        #expect(FuzzySearch.score("clip", in: "click up") == nil)
+        #expect(FuzzySearch.exactScore("hllo", in: "hello world") == nil)
+        // Exact matches only, when there are any.
+        let found = FuzzySearch.rank("clip", ["a clip", "clamp", "cl ip", "clipboard"], text: { $0 })
+        #expect(found.exact && found.matches == ["a clip", "clipboard"])
+        let close = FuzzySearch.rank("clpboard", ["a clip", "clipboard"], text: { $0 })
+        #expect(!close.exact && close.matches == ["clipboard"])
     }
 
     @Test func smartRules() {
@@ -416,6 +424,19 @@ import Testing
         #expect(db.search("invoce frday", in: .history, limit: 10).first?.previewText == "Invoice 4471 due Friday")
         #expect(db.search("launch meeting", in: .history, limit: 10).first?.previewText == "Meeting notes for the launch")
         #expect(db.search("zzqq", in: .history, limit: 10).isEmpty)
+        // Typo-tolerant matches never mix in with exact ones, and the count covers every match.
+        try db.upsert([clip("Invoices for March"), clip("in voice chat"), clip("invocation of the rule")])
+        let found = db.find("invoice", in: .history, limit: 1)
+        #expect(found.exact && found.total == 2 && found.clips.count == 1)
+        #expect(db.find("invoice", in: .history, limit: 10).clips.allSatisfy { $0.previewText.lowercased().contains("invoice") })
+        let close = db.find("invoce", in: .history, limit: 10)
+        #expect(!close.exact && close.total == 2)
+        #expect(db.find("", in: .history, limit: 2).total == 6)
+        // The app a clipping came from isn't searched.
+        var fromApp = clip("Tracking number 1Z999")
+        fromApp.sourceName = "Universal Clipboard"
+        try db.upsert(fromApp)
+        #expect(db.find("clipboard", in: .history, limit: 10).total == 0)
         var secret = clip("sk-test-abcdef1234567890")
         secret.sensitive = true
         secret.title = "API key or token"

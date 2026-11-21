@@ -149,9 +149,10 @@ public struct Clipping: Codable, Identifiable, Hashable, Sendable {
     /// Kept no matter what the history limits say.
     public var isKept: Bool { pinned || !pastebinIDs.isEmpty }
 
-    /// The text to search: preview, recognized text, title and note.
+    /// The text to search: preview, recognized text, title and note. Not the app it came from:
+    /// "clip" would find everything from Universal Clipboard. Smart pastebins filter by app.
     public var searchableText: String {
-        [title, previewText, ocrText, note, sourceName].compactMap { $0 }.joined(separator: "\n")
+        [title, previewText, ocrText, note].compactMap { $0 }.joined(separator: "\n")
     }
 
     public var displayTitle: String {

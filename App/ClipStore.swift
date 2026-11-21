@@ -221,6 +221,12 @@ final class ClipStore {
 
     /// A page of clippings in a scope, newest first, or best match first when searching.
     func clippings(in scope: Scope, query: String = "", limit: Int = 200, offset: Int = 0) -> [Clipping] {
+        search(in: scope, query: query, limit: limit, offset: offset).clips
+    }
+
+    /// A page of clippings in a scope, newest first, or best match first when searching, with
+    /// how many match in all. See `ClipDatabase.find` for what counts as a match.
+    func search(in scope: Scope, query: String = "", limit: Int = 200, offset: Int = 0) -> ClipDatabase.SearchResult {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         let filter: ClipDatabase.Filter
         switch scope {
@@ -230,7 +236,8 @@ final class ClipStore {
         case .pastebin(let id): filter = .pastebin(id)
         case .smart(let id):
             // Smart pastebin rules run in Swift, over clippings read newest first in batches.
-            guard let smart = library.smartPastebins.first(where: { $0.id == id }) else { return [] }
+            let empty = ClipDatabase.SearchResult(clips: [], total: 0, exact: true, capped: false)
+            guard let smart = library.smartPastebins.first(where: { $0.id == id }) else { return empty }
             let now = Date()
             var matches: [Clipping] = []
             let want = trimmed.isEmpty ? offset + limit : 2_000
@@ -238,15 +245,17 @@ final class ClipStore {
                 if smart.matches(clip, now: now) { matches.append(clip) }
                 return matches.count < want
             }
-            guard !trimmed.isEmpty else { return Array(matches.dropFirst(offset).prefix(limit)) }
-            return matches.compactMap { clip -> (Clipping, Double)? in
-                FuzzySearch.score(trimmed, in: clip.sensitive ? (clip.title ?? "") : clip.searchableText).map { (clip, $0) }
+            guard !trimmed.isEmpty else {
+                return ClipDatabase.SearchResult(clips: Array(matches.dropFirst(offset).prefix(limit)),
+                                                 total: smartCount(id) ?? matches.count, exact: true, capped: false)
             }
-            .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.copiedAt > $1.0.copiedAt }
-            .dropFirst(offset).prefix(limit).map(\.0)
+            let found = FuzzySearch.rank(trimmed, matches, text: ClipDatabase.searchBody)
+            return ClipDatabase.SearchResult(clips: Array(found.matches.dropFirst(offset).prefix(limit)),
+                                             total: found.matches.count, exact: found.exact, capped: matches.count >= want)
         }
-        if trimmed.isEmpty { return db.page(filter, limit: limit, offset: offset) }
-        return Array(db.search(trimmed, in: filter, limit: offset + limit).dropFirst(offset))
+        var result = db.find(trimmed, in: filter, limit: offset + limit)
+        result.clips = Array(result.clips.dropFirst(offset))
+        return result
     }
 
     enum Scope: Hashable {

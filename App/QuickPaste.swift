@@ -198,6 +198,13 @@ final class QuickPasteModel {
 
     @ObservationIgnored private var clipsKey = ""
     @ObservationIgnored private var clipsCache: [Clipping] = []
+    @ObservationIgnored private var foundCache: ClipDatabase.SearchResult?
+
+    /// What the search found in the current source, for the footer's count. Nil without a search.
+    var found: ClipDatabase.SearchResult? {
+        _ = clips
+        return query.trimmingCharacters(in: .whitespaces).isEmpty ? nil : foundCache
+    }
 
     /// The list, read once per change of source, search or library rather than on every use.
     var clips: [Clipping] {
@@ -205,7 +212,9 @@ final class QuickPasteModel {
         guard let scope = source.scope else { return [] }
         let key = "\(scope)|\(query)|\(revision)"
         if key != clipsKey {
-            clipsCache = ClipStore.shared.clippings(in: scope, query: query, limit: 300)
+            let found = ClipStore.shared.search(in: scope, query: query, limit: 300)
+            foundCache = found
+            clipsCache = found.clips
             clipsKey = key
         }
         return clipsCache
@@ -674,6 +683,11 @@ struct QuickPasteView: View {
                 hint("⇥", "Pastebin"); hint("⌥⇥", "View"); hint("⌘-click", "Pick several"); hint("⌃1–9", "Move")
             }
             Spacer(minLength: 8)
+            if model.filterMode == nil, model.source.scope != nil, let found = model.found {
+                Text(SearchCount.text(found, query: model.query))
+                    .lineLimit(1).fixedSize().monospacedDigit()
+                    .help(found.exact ? "How many clippings contain every word you typed" : SearchCount.closeHelp)
+            }
             if SyncEngine.shared.enabled, let bytes = SyncEngine.shared.cloudBytes {
                 Label("\(bytes.formatted(.byteCount(style: .file))) in iCloud", systemImage: "icloud")
                     .lineLimit(1).fixedSize()

@@ -490,6 +490,23 @@ struct Sidebar: View {
 
 // MARK: - Clipping list
 
+/// How many clippings a search found, for the window subtitle and the Quick Paste footer.
+enum SearchCount {
+    static func text(_ found: ClipDatabase.SearchResult, query: String) -> String {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return "" }
+        let n = found.total.formatted() + (found.capped ? "+" : "")
+        switch (found.total, found.exact) {
+        case (0, _): return "No matches"
+        case (1, true) where !found.capped: return "1 match"
+        case (1, false) where !found.capped: return "1 close match"
+        case (_, true): return "\(n) matches"
+        case (_, false): return "\(n) close matches"
+        }
+    }
+
+    static let closeHelp = "Nothing contains these words exactly, so these are close matches that allow for typos."
+}
+
 struct ClipList: View {
     @Bindable var state: MainState
     let scope: ClipStore.Scope
@@ -501,13 +518,16 @@ struct ClipList: View {
     /// Rows load 200 at a time; scrolling to the end loads more.
     @State private var limit = 200
 
-    var clips: [Clipping] {
+    var clips: [Clipping] { found.clips }
+
+    var found: ClipDatabase.SearchResult {
         _ = store.revision
-        return store.clippings(in: scope, query: state.query, limit: limit)
+        return store.search(in: scope, query: state.query, limit: limit)
     }
 
     var body: some View {
-        let items = clips
+        let found = found
+        let items = found.clips
         ScrollViewReader { proxy in
             List(selection: $state.selection) {
                 ForEach(items) { clip in
@@ -594,6 +614,7 @@ struct ClipList: View {
         }
         .sheet(item: $shortcutFor) { ClipShortcutSheet(clip: $0) }
         .navigationTitle(title)
+        .navigationSubtitle(SearchCount.text(found, query: state.query))
     }
 
     var title: String {

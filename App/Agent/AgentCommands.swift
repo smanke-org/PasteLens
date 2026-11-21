@@ -27,8 +27,8 @@ enum AgentCommands {
 
         // MARK: Clippings
 
-        AgentCommand(name: "clips list", summary: "List clippings in History (or another pastebin), newest first, or best match first with --search, which forgives typos as Quick Paste does. Returns `clips` (id, title, kind, copied in UTC, app, pinned, pastebins, sensitive), `total` and `nextOffset` when there are more.",
-                     params: [.init(name: "search", help: "words to look for in the text, title, note or app"),
+        AgentCommand(name: "clips list", summary: "List clippings in History (or another pastebin), newest first, or best match first with --search, which finds clippings containing every word and, only when none do, close matches that forgive typos (then `closeMatches` is true). Returns `clips` (id, title, kind, copied in UTC, app, pinned, pastebins, sensitive), `total` and `nextOffset` when there are more.",
+                     params: [.init(name: "search", help: "words to look for in the text, title or note"),
                               .init(name: "pastebin", help: "history (default), pinned, all, or a pastebin or smart pastebin's name or id (see `pastelens pastebins list`)"),
                               .init(name: "since", help: "only clippings copied on or after this ISO 8601 date, like 2026-11-01"),
                               .init(name: "limit", kind: .integer, help: "at most this many (default 50, at most 500)"),
@@ -48,17 +48,22 @@ enum AgentCommands {
                 since = date
             }
             let items: [Clipping], total: Int
+            var closeMatches = false
             if search.isEmpty && since == nil {
                 items = store.clippings(in: scope, limit: limit, offset: offset)
                 total = store.count(scope) ?? (offset + items.count)
             } else {
                 // Searches and date limits: the matches, up to 5,000, then a page of them.
-                var matches = store.clippings(in: scope, query: search, limit: 5_000)
+                let found = store.search(in: scope, query: search, limit: 5_000)
+                var matches = found.clips
+                closeMatches = !search.isEmpty && !found.exact
                 if let since { matches = matches.filter { $0.copiedAt >= since } }
                 items = Array(matches.dropFirst(offset).prefix(limit))
                 total = matches.count
             }
             var result: JSONObject = ["clips": items.map(summary), "total": total]
+            // Nothing contained the words as typed, so these forgive typos.
+            if closeMatches { result["closeMatches"] = true }
             if offset + items.count < total { result["nextOffset"] = offset + items.count }
             return result
         },
