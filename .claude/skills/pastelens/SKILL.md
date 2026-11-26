@@ -36,6 +36,7 @@ app is closed, the command opens it in the background. If `pastelens` isn't on P
 | `pastelens clips add --text T [--title T] [--pastebin NAME] --json` | Save text as a clipping (clipboard untouched) |
 | `pastelens clips update <id> [--note T] [--pinned true/false] --json` | Change one |
 | `pastelens clips move <ids> --to NAME\|history --json` | File clippings into a pastebin |
+| `pastelens clips export <ids> --to FOLDER [--combined] --json` | Save clippings as files (or `--pastebin NAME` for all of one) |
 | `pastelens filters run "<filter>" --text T --json` | Run a filter and get the result |
 
 Everything else: `pastelens help`, and `pastelens help <command>` for its options.

@@ -140,6 +140,10 @@ enum Help {
             .tip("Give a pastebin its own shortcut (in its edit sheet) to open Quick Paste on just that pastebin."),
             .tip("In Quick Paste and the History window, ⌃1 is your first pastebin, ⌃2 the second, and so on, in sidebar order."),
             .tip("You can also drag clippings onto a pastebin in the sidebar (or Quick Paste's left column) to move them there. Text dragged in from another app is saved in that pastebin."),
+            .heading("Export clippings as files"),
+            .text("Select one or more clippings (⌘-click, ⇧-click or ⌘A) and drag them to the desktop or a Finder window. One clipping becomes one file; several land in a \"PasteLens Export\" folder. Text is saved as .txt, rich text as .rtf, images as .png, links as .webloc, and copied files as copies of the originals."),
+            .tip("Hold ⌥ as you drop to get one combined text file instead."),
+            .tip("Or choose Export… (⌘E) in the History window, Quick Paste or the right-click menu to pick a folder."),
         ]),
 
         HelpTopic(id: "filters", title: "Filters", symbol: "camera.filters", blocks: [

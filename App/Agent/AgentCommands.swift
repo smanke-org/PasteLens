@@ -149,6 +149,31 @@ enum AgentCommands {
             }
             return ["moved": ids.map(short), "to": scopeName(target), "clips": store.db.clips(ids).map(summary)]
         },
+        AgentCommand(name: "clips export", summary: "Save clippings as files in a folder, as dragging them to Finder does: text as .txt, rich text as .rtf, images as .png, links as .webloc, copied files as copies of the originals. --combined writes one .txt instead. Returns the files written.",
+                     params: [.init(name: "ids", positional: true, help: "clipping ids, separated by commas; or use --pastebin"),
+                              .init(name: "pastebin", help: "export every clipping in this pastebin (history, pinned, all, or a name or id), newest first"),
+                              .init(name: "to", required: true, help: "the folder to write into (made if missing)"),
+                              .init(name: "combined", kind: .boolean, help: "one .txt with every clipping's text")],
+                     example: "pastelens clips export 3f2a9c1e,8b01d2c4 --to ~/Desktop/Export --json") { args in
+            let store = ClipStore.shared
+            var ids: [UUID]
+            if let raw = args.string("ids") { ids = try findClips(raw).map(\.id) }
+            else if let bin = args.string("pastebin") {
+                let scope = try findScope(bin)
+                ids = store.clippings(in: scope, limit: 100_000, offset: 0).map(\.id)
+            } else { throw AgentError.usage("give clipping ids or --pastebin") }
+            ids = ids.filter { store.clip($0)?.sensitive != true }
+            let folder = URL(fileURLWithPath: (try args.required("to") as NSString).expandingTildeInPath)
+            let jobs = ClipExport.jobs(ids)
+            if try args.bool("combined") == true {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let url = folder.appendingPathComponent(ClipExport.folderName() + ".txt")
+                try ClipExport.writeCombined(jobs, to: url)
+                return ["exported": jobs.count, "files": [url.path]]
+            }
+            let files = try ClipExport.write(jobs, into: folder)
+            return ["exported": jobs.count, "files": files.map(\.path)]
+        },
         AgentCommand(name: "clips copy", summary: "Put a clipping on the clipboard, as choosing it in the menu bar menu does, and move it to the top of History. It doesn't paste.",
                      params: [idParam,
                               .init(name: "plain", kind: .boolean, help: "copy only the text, without formatting")],

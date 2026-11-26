@@ -386,7 +386,11 @@ struct ClipDrag {
 
     static func provider(for clip: Clipping, ids: [UUID], from scope: ClipStore.Scope?) -> NSItemProvider {
         active = ClipDrag(ids: ids, scope: scope)
-        let provider = NSItemProvider(object: (ClipStore.shared.text(of: clip.id) ?? clip.previewText) as NSString)
+        // Files first: Finder takes the first type it understands, and it understands text too
+        // (it would save the dragged row's text as one file). Files are written only on the drop.
+        let provider = NSItemProvider()
+        ClipExport.register(ids, on: provider)
+        provider.registerObject((ClipStore.shared.text(of: clip.id) ?? clip.previewText) as NSString, visibility: .all)
         let data = Data(ids.map(\.uuidString).joined(separator: "\n").utf8)
         provider.registerDataRepresentation(forTypeIdentifier: UTType.pasteLensClippings.identifier, visibility: .ownProcess) { done in
             done(data, nil)

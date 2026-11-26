@@ -380,6 +380,10 @@ final class QuickPasteModel {
         case "c": activate(.copy); return true
         case "p": if let clip = selectedClip { ClipStore.shared.setPinned([clip.id], !clip.pinned) }; return true
         case "s": StackController.shared.add(targets); return true
+        case "e":
+            guard filterMode == nil, source != .snippets, !targets.isEmpty else { return false }
+            let ids = targets
+            QuickPastePanel.shared.close(); ClipExport.exportWithPanel(ids); return true
         case "a":
             guard filterMode == nil, source != .snippets else { return false }
             marked = Set(clips.map(\.id))
@@ -631,6 +635,7 @@ struct QuickPasteView: View {
                 }
             }
             Button("Add to Stack") { StackController.shared.add(ids) }
+            Button(ids.count == 1 ? "Export…" : "Export \(ids.count) Clippings…") { QuickPastePanel.shared.close(); ClipExport.exportWithPanel(ids) }
             Button(clip.pinned ? "Unpin" : "Pin") { ClipStore.shared.setPinned(ids, !clip.pinned) }
             Divider()
             Button("Delete", role: .destructive) { ClipStore.shared.delete(ids); model.marked = [] }

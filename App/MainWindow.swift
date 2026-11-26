@@ -599,6 +599,9 @@ struct ClipList: View {
                     Button("Merge with Commas") { merge(", ") }
                 } label: { Label("Merge", systemImage: "arrow.triangle.merge") }
                     .disabled(state.selection.count < 2).help("Join the selected clippings into one")
+                Button { ClipExport.exportWithPanel(ordered(state.selection)) } label: { Label("Export", systemImage: "square.and.arrow.up") }
+                    .keyboardShortcut("e", modifiers: .command)
+                    .disabled(state.selection.isEmpty).help("Save the selected clippings as files (⌘E). You can also drag them to the desktop.")
                 Button(role: .destructive) { store.delete(Array(state.selection)) } label: { Label("Delete", systemImage: "trash") }
                     .disabled(state.selection.isEmpty)
                 if scope == .history {
@@ -710,6 +713,7 @@ struct ClipMenu: View {
         if case .pastebin(let id) = scope { Button("Move Back to History") { store.remove(ids, from: id) } }
         Button("Add to Stack") { StackController.shared.add(ids) }
         if ids.count > 1 { Button("Merge") { _ = store.merge(ids, separator: "\n") } }
+        Button(ids.count == 1 ? "Export…" : "Export \(ids.count) Clippings…") { ClipExport.exportWithPanel(ids) }
         if ids.count == 1, let clip = clips.first {
             Button(store.clipHotKeys[clip.id] == nil ? "Assign Shortcut…" : "Change Shortcut…") { shortcutFor = clip }
             if clip.kind == .file, let path = clip.previewText.split(separator: "\n").first {
@@ -761,6 +765,7 @@ struct MultiSelectionView: View {
             HStack {
                 Button("Add to Stack") { StackController.shared.add(ids) }
                 Button("Merge") { _ = store.merge(ids, separator: "\n") }
+                Button("Export…") { ClipExport.exportWithPanel(ids) }
                 Button("Delete", role: .destructive) { store.delete(ids) }
             }
         }
